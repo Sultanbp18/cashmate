@@ -61,9 +61,9 @@ class CashMateTelegramBot:
         self.application.add_handler(CommandHandler("balance", self.balance_command))
         self.application.add_handler(CommandHandler("test", self.test_command))
         
-        # Message handler for natural language input
+        # Message handler for natural language input (only for transaction-like messages)
         self.application.add_handler(
-            MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message)
+            MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_transaction_message)
         )
     
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -83,11 +83,17 @@ Anda bisa mencatat transaksi dengan bahasa natural Indonesia!
 • `/recent` - Transaksi terakhir
 • `/help` - Lihat semua command
 
-*💡 Tips:*
-Anda juga bisa langsung ketik transaksi tanpa command:
-• `bakso 15k cash` 
-• `gojek 20rb ke kantor`
-• `gaji 5jt ke bank`
+*💡 Smart Transaction Detection:*
+Bot akan otomatis mendeteksi transaksi dari pesan Anda:
+• `bakso 15k cash` ✅ (langsung diproses)
+• `gojek 20rb ke kantor` ✅ (langsung diproses)
+• `gaji 5jt ke bank` ✅ (langsung diproses)
+• `halo bot` 🤔 (akan beri panduan)
+
+*🤖 AI Parser:*
+• **Hanya digunakan** untuk transaksi yang terdeteksi
+• **Hemat quota** - tidak dipanggil untuk chat biasa
+• **Smart categorization** berdasarkan konteks
 
 Selamat mencatat! 📊💰
         """
@@ -114,12 +120,16 @@ Selamat mencatat! 📊💰
 • `/test` - Test koneksi database & AI
 • `/help` - Tampilkan bantuan ini
 
-*💡 Natural Language Input:*
-Ketik langsung tanpa command:
-• `makan siang 25k`
-• `bensin 50rb pake dana`
-• `gaji bulan ini 8jt`
-• `beli buku 75k kartu kredit`
+*💡 Smart Transaction Detection:*
+Bot akan mendeteksi otomatis jika pesan Anda adalah transaksi:
+• `makan siang 25k` ✅ (terdeteksi sebagai transaksi)
+• `bensin 50rb dana` ✅ (terdeteksi sebagai transaksi)
+• `halo bot` ❌ (tidak terdeteksi, akan beri panduan)
+
+*🤖 AI Parser Usage:*
+• **Hanya dipanggil** untuk pesan yang terdeteksi sebagai transaksi
+• **Hemat quota** Gemini API - tidak dipanggil untuk chat biasa
+• **Otomatis categorize** berdasarkan konteks
 
 *💰 Format Angka:*
 • `15k` = 15,000
@@ -295,16 +305,68 @@ makanan, transportasi, belanja, hiburan, kesehatan, dll
         
         await update.message.reply_text(test_message, parse_mode='Markdown')
     
-    async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle non-command messages (natural language input)."""
+    async def handle_transaction_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle non-command messages - only process if it looks like a transaction."""
         message_text = update.message.text.strip()
-        
+
         # Skip empty messages
         if not message_text:
             return
-        
-        # Process as transaction input
-        await self._process_transaction(update, message_text)
+
+        # Check if message looks like a transaction
+        if self._is_transaction_like(message_text):
+            # Process as transaction input (uses AI parser)
+            await self._process_transaction(update, message_text)
+        else:
+            # Not a transaction - provide helpful response
+            await self._handle_non_transaction_message(update, message_text)
+
+    def _is_transaction_like(self, message: str) -> bool:
+        """Check if message looks like a transaction input."""
+        message_lower = message.lower()
+
+        # Transaction indicators
+        transaction_keywords = [
+            'beli', 'bayar', 'makan', 'minum', 'transport', 'gojek', 'grab',
+            'bensin', 'parkir', 'tiket', 'belanja', 'shopping', 'gaji',
+            'salary', 'uang', 'duit', 'rupiah', 'rb', 'k', 'jt'
+        ]
+
+        # Amount patterns (numbers with k, rb, jt)
+        amount_patterns = ['k', 'rb', 'jt', 'ribu', 'ratus', 'juta']
+
+        # Check for transaction keywords
+        has_keyword = any(keyword in message_lower for keyword in transaction_keywords)
+
+        # Check for amount patterns
+        has_amount = any(pattern in message_lower for pattern in amount_patterns)
+
+        # Check for numbers (potential amounts)
+        has_numbers = any(char.isdigit() for char in message)
+
+        # Must have either keyword + amount OR just amount pattern
+        return (has_keyword and has_numbers) or has_amount
+
+    async def _handle_non_transaction_message(self, update: Update, message: str):
+        """Handle messages that are not transactions."""
+        response = f"""
+🤔 *Pesan tidak dikenali sebagai transaksi*
+
+Pesan Anda: `{message}`
+
+💡 *Untuk mencatat transaksi, gunakan:*
+• `/input bakso 15k cash`
+• Atau kirim pesan seperti: `bakso 15k`, `gaji 5jt`, `bensin 50rb`
+
+📋 *Command tersedia:*
+• `/help` - Lihat semua bantuan
+• `/summary` - Ringkasan bulanan
+• `/recent` - Transaksi terakhir
+• `/balance` - Saldo akun
+• `/test` - Test koneksi
+        """
+
+        await update.message.reply_text(response, parse_mode='Markdown')
     
     async def _process_transaction(self, update: Update, transaction_input: str):
         """Process transaction input using AI parser."""
