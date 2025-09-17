@@ -384,21 +384,35 @@ Error: {str(e)}
 
             logger.info("CashMate Telegram Bot is running!")
 
-            # Keep running - use proper shutdown handling
-            try:
-                # Wait for shutdown signal
-                await asyncio.Future()  # Run forever
-            except KeyboardInterrupt:
+            # Keep running with proper event loop
+            stop_signal = asyncio.Event()
+
+            def signal_handler():
                 logger.info("Received shutdown signal")
-            except Exception as e:
-                logger.error(f"Runtime error: {e}")
+                stop_signal.set()
+
+            # Handle shutdown signals
+            try:
+                import signal
+                signal.signal(signal.SIGINT, lambda s, f: signal_handler())
+                signal.signal(signal.SIGTERM, lambda s, f: signal_handler())
+            except (OSError, ValueError):
+                # Signal handling not available on this platform
+                pass
+
+            # Wait for stop signal
+            await stop_signal.wait()
 
         except Exception as e:
             logger.error(f"Bot startup error: {e}")
+            raise
         finally:
             logger.info("Stopping CashMate Telegram Bot...")
-            await self.application.stop()
-            await self.application.shutdown()
+            try:
+                await self.application.stop()
+                await self.application.shutdown()
+            except Exception as e:
+                logger.error(f"Error during shutdown: {e}")
 
 def main():
     """Main entry point for Telegram Bot."""
