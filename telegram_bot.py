@@ -375,22 +375,30 @@ Error: {str(e)}
         try:
             # Setup bot commands
             await self.setup_bot_commands()
-            
+
             # Start bot
             logger.info("Starting CashMate Telegram Bot...")
             await self.application.initialize()
             await self.application.start()
             await self.application.updater.start_polling()
-            
+
             logger.info("CashMate Telegram Bot is running!")
-            
-            # Keep running
-            await self.application.updater.idle()
-            
+
+            # Keep running - use proper shutdown handling
+            try:
+                # Wait for shutdown signal
+                await asyncio.Future()  # Run forever
+            except KeyboardInterrupt:
+                logger.info("Received shutdown signal")
+            except Exception as e:
+                logger.error(f"Runtime error: {e}")
+
         except Exception as e:
-            logger.error(f"Bot error: {e}")
+            logger.error(f"Bot startup error: {e}")
         finally:
+            logger.info("Stopping CashMate Telegram Bot...")
             await self.application.stop()
+            await self.application.shutdown()
 
 def main():
     """Main entry point for Telegram Bot."""
