@@ -29,7 +29,8 @@ class GeminiTransactionParser:
         
         # Configure Gemini AI
         genai.configure(api_key=self.api_key)
-        self.model = genai.GenerativeModel('gemini-pro')
+        # Use the correct model name
+        self.model = genai.GenerativeModel('gemini-1.5-flash')
         
         logger.info("Gemini AI parser initialized successfully")
     
@@ -151,10 +152,11 @@ Example: "bakso 15k" → {{"tipe": "pengeluaran", "nominal": 15000, "akun": "cas
         }
 
         # Detect income keywords
-        income_keywords = ['gaji', 'salary', 'bonus', 'terima', 'dapat', 'penghasilan']
+        income_keywords = ['gaji', 'salary', 'bonus', 'terima', 'dapat', 'penghasilan', 'pendapatan', 'insentif']
         if any(keyword in input_lower for keyword in income_keywords):
             result['tipe'] = 'pemasukan'
             result['kategori'] = 'gaji'
+            logger.info(f"Fallback: Detected income from keywords: {[kw for kw in income_keywords if kw in input_lower]}")
 
         # Extract amount
         import re
@@ -180,7 +182,7 @@ Example: "bakso 15k" → {{"tipe": "pengeluaran", "nominal": 15000, "akun": "cas
                 result['nominal'] = amount
                 break
 
-        # Detect account
+        # Detect account (don't overwrite 'tipe' field!)
         account_keywords = {
             'cash': ['cash', 'tunai'],
             'bank': ['bank', 'rekening'],
@@ -190,8 +192,9 @@ Example: "bakso 15k" → {{"tipe": "pengeluaran", "nominal": 15000, "akun": "cas
         }
 
         for account, keywords in account_keywords.items():
-            if any(keyword in input_lower for keyword in account_keywords[account]):
-                result['tipe'] = account
+            if any(keyword in input_lower for keyword in keywords):
+                result['akun'] = account  # Set 'akun', not 'tipe'!
+                logger.info(f"Fallback: Detected account '{account}' from keywords: {[kw for kw in keywords if kw in input_lower]}")
                 break
 
         # Validate result
