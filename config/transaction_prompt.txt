@@ -1,27 +1,69 @@
-Analyze the following transaction input and extract structured information. Return ONLY a valid JSON object with no additional text.
+You are an expert financial transaction parser. Analyze the following transaction input and extract structured information.
 
-Input: "{user_input}"
+INPUT: "{user_input}"
 
-Extract the following information:
-- tipe: "pemasukan" (income) or "pengeluaran" (expense) - default to "pengeluaran" if unclear
-- nominal: numeric amount (convert from text like "15k" to 15000, "500rb" to 500000)
-- akun: payment method or account (e.g., "cash", "bank", "kartu kredit", "dana", "gopay", "ovo")
-- kategori: transaction category (e.g., "makanan", "transportasi", "belanja", "hiburan", "kesehatan", "pendidikan", "lainnya")
-- catatan: description or notes about the transaction
+TASK: Parse this Indonesian transaction text and return ONLY a valid JSON object with these exact fields:
+- tipe: "pemasukan" (income) or "pengeluaran" (expense)
+- nominal: numeric amount (convert text to numbers)
+- akun: payment method/account (cash, bank, dana, gopay, ovo, kartu kredit)
+- kategori: transaction category
+- catatan: brief description
 
-Rules:
-1. If amount contains "k" (like "15k"), multiply by 1000
-2. If amount contains "rb" (like "500rb"), multiply by 1000
-3. If amount contains "jt" (like "2jt"), multiply by 1000000
-4. Default akun to "cash" if not specified
-5. Infer kategori from context (food items = "makanan", transport = "transportasi", etc.)
-6. Use the item/service name as catatan
-7. Words like "beli", "bayar", "buat" indicate expenses
-8. Words like "dapat", "terima", "gaji" indicate income
+IMPORTANT RULES:
 
-Examples:
-Input: "bakso 15k pake cash" → {"tipe": "pengeluaran", "nominal": 15000, "akun": "cash", "kategori": "makanan", "catatan": "bakso"}
-Input: "gojek ke kantor 20rb" → {"tipe": "pengeluaran", "nominal": 20000, "akun": "cash", "kategori": "transportasi", "catatan": "gojek ke kantor"}
-Input: "gaji bulan ini 5jt" → {"tipe": "pemasukan", "nominal": 5000000, "akun": "bank", "kategori": "gaji", "catatan": "gaji bulan ini"}
+1. **Amount Conversion:**
+   - "k" = multiply by 1000 (15k = 15000)
+   - "rb" = multiply by 1000 (500rb = 500000)
+   - "jt" = multiply by 1000000 (2jt = 2000000)
+   - Convert all amounts to plain numbers
 
-Return only the JSON object:
+2. **Transaction Type Detection:**
+   - INCOME (pemasukan): gaji, salary, terima, dapat, bonus, penghasilan, pendapatan
+   - EXPENSE (pengeluaran): beli, bayar, makan, minum, transport, bensin, belanja, etc.
+   - Default to "pengeluaran" if unclear
+
+3. **Account Detection:**
+   - cash/tunai = "cash"
+   - bank/rekening = "bank"
+   - dana = "dana"
+   - gopay = "gopay"
+   - ovo = "ovo"
+   - kartu kredit/credit card = "kartu kredit"
+   - Default to "cash" if not specified
+
+4. **Category Detection:**
+   - Food: makan, minum, bakso, nasi, ayam, makanan, restoran, cafe
+   - Transport: gojek, grab, taksi, angkot, bensin, parkir, tol
+   - Shopping: beli, belanja, toko, mall, baju, sepatu, elektronik
+   - Salary: gaji, salary, bonus, insentif
+   - Health: obat, dokter, rumah sakit, kesehatan
+   - Entertainment: bioskop, game, hiburan, nonton
+   - Other: default to "lainnya"
+
+5. **Notes/Description:**
+   - Use the main item/service as description
+   - Keep it brief and meaningful
+
+EXAMPLES:
+
+Input: "bakso 15k pake cash"
+Output: {{"tipe": "pengeluaran", "nominal": 15000, "akun": "cash", "kategori": "makanan", "catatan": "bakso"}}
+
+Input: "gojek ke kantor 20rb"
+Output: {{"tipe": "pengeluaran", "nominal": 20000, "akun": "cash", "kategori": "transportasi", "catatan": "gojek ke kantor"}}
+
+Input: "gaji bulan ini 5jt ke bank"
+Output: {{"tipe": "pemasukan", "nominal": 5000000, "akun": "bank", "kategori": "gaji", "catatan": "gaji bulan ini"}}
+
+Input: "beli buku 50rb dana"
+Output: {{"tipe": "pengeluaran", "nominal": 50000, "akun": "dana", "kategori": "belanja", "catatan": "beli buku"}}
+
+Input: "makan siang 25k"
+Output: {{"tipe": "pengeluaran", "nominal": 25000, "akun": "cash", "kategori": "makanan", "catatan": "makan siang"}}
+
+Input: "gaji 50k cash"
+Output: {{"tipe": "pemasukan", "nominal": 50000, "akun": "cash", "kategori": "gaji", "catatan": "gaji"}}
+
+NOW ANALYZE THIS INPUT: "{user_input}"
+
+Return ONLY the JSON object, no additional text or explanation.

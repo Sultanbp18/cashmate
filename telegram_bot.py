@@ -60,6 +60,7 @@ class CashMateTelegramBot:
         self.application.add_handler(CommandHandler("recent", self.recent_command))
         self.application.add_handler(CommandHandler("balance", self.balance_command))
         self.application.add_handler(CommandHandler("test", self.test_command))
+        self.application.add_handler(CommandHandler("debug", self.debug_command))
         
         # Message handler for natural language input (only for transaction-like messages)
         self.application.add_handler(
@@ -118,6 +119,7 @@ Selamat mencatat! 📊💰
 
 *🔧 Utility Commands:*
 • `/test` - Test koneksi database & AI
+• `/debug <text>` - Test AI parser secara manual
 • `/help` - Tampilkan bantuan ini
 
 *💡 Smart Transaction Detection:*
@@ -304,7 +306,61 @@ makanan, transportasi, belanja, hiburan, kesehatan, dll
         test_message += "\n🏦 Bot siap digunakan!"
         
         await update.message.reply_text(test_message, parse_mode='Markdown')
-    
+
+    async def debug_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /debug command - Test AI parser manually."""
+        if not context.args:
+            await update.message.reply_text(
+                "❌ Format: `/debug <transaction_text>`\n"
+                "Contoh: `/debug gaji 50k cash`\n"
+                "Contoh: `/debug bakso 15k`",
+                parse_mode='Markdown'
+            )
+            return
+
+        transaction_input = ' '.join(context.args)
+
+        try:
+            # Test AI parsing
+            debug_msg = await update.message.reply_text("🔍 Testing AI Parser...")
+
+            # Parse with AI
+            parsed_data = self.parser.parse_transaction(transaction_input)
+
+            # Format debug result
+            debug_result = f"""
+🔍 *AI Parser Debug Result*
+
+📝 *Input:* `{transaction_input}`
+
+🤖 *AI Parsed Result:*
+• Tipe: `{parsed_data['tipe']}`
+• Nominal: `{parsed_data['nominal']}`
+• Akun: `{parsed_data['akun']}`
+• Kategori: `{parsed_data['kategori']}`
+• Catatan: `{parsed_data['catatan']}`
+
+✅ *Status:* AI parsing successful
+            """
+
+            await debug_msg.edit_text(debug_result, parse_mode='Markdown')
+
+        except Exception as e:
+            error_result = f"""
+❌ *AI Parser Debug - Error*
+
+📝 *Input:* `{transaction_input}`
+🔴 *Error:* {str(e)}
+
+💡 *Possible Solutions:*
+• Check Gemini API key
+• Verify internet connection
+• Try simpler input format
+• Use `/test` to check system status
+            """
+
+            await update.message.reply_text(error_result, parse_mode='Markdown')
+
     async def handle_transaction_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle non-command messages - only process if it looks like a transaction."""
         message_text = update.message.text.strip()
@@ -427,6 +483,7 @@ Error: {str(e)}
             BotCommand("recent", "Transaksi terakhir"),
             BotCommand("balance", "Lihat saldo semua akun"),
             BotCommand("test", "Test koneksi database & AI"),
+            BotCommand("debug", "Test AI parser: /debug gaji 50k cash"),
         ]
         
         await self.application.bot.set_my_commands(commands)

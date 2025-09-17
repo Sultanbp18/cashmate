@@ -66,74 +66,140 @@ Example: "bakso 15k" → {{"tipe": "pengeluaran", "nominal": 15000, "akun": "cas
     
     def parse_transaction(self, user_input: str) -> Dict[str, Any]:
         """
-        Parse natural language transaction input using Gemini AI.
-        
+        Parse natural language transaction input using Gemini AI with fallback.
+
         Args:
             user_input (str): Natural language transaction description
-        
+
         Returns:
-            dict: Structured transaction data with keys:
-                - tipe (str): 'pemasukan' or 'pengeluaran'
-                - nominal (float): Amount
-                - akun (str): Account/payment method
-                - kategori (str): Category
-                - catatan (str): Description/notes
+            dict: Structured transaction data
         """
         try:
             # Clean input
             cleaned_input = user_input.strip()
             if cleaned_input.startswith('/input '):
                 cleaned_input = cleaned_input[7:]  # Remove '/input ' prefix
-            
+
             if not cleaned_input:
                 raise ValueError("Empty transaction input")
-            
-            # Create prompt
-            prompt = self.create_parsing_prompt(cleaned_input)
-            
-            # Generate response using Gemini
-            logger.info(f"Parsing transaction: '{cleaned_input}'")
-            response = self.model.generate_content(prompt)
-            
-            if not response.text:
-                raise ValueError("Empty response from Gemini AI")
-            
-            # Clean and parse JSON response
-            json_text = response.text.strip()
-            
-            # Remove markdown code blocks if present
-            if json_text.startswith('```json'):
-                json_text = json_text[7:]
-            if json_text.startswith('```'):
-                json_text = json_text[3:]
-            if json_text.endswith('```'):
-                json_text = json_text[:-3]
-            
-            json_text = json_text.strip()
-            
-            # Parse JSON
-            parsed_data = json.loads(json_text)
-            
-            # Validate required fields
-            required_fields = ['tipe', 'nominal', 'akun', 'kategori', 'catatan']
-            for field in required_fields:
-                if field not in parsed_data:
-                    raise ValueError(f"Missing required field: {field}")
-            
-            # Validate and clean data
-            validated_data = self._validate_transaction_data(parsed_data)
-            
-            logger.info(f"Successfully parsed transaction: {validated_data}")
-            return validated_data
-            
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON parsing error: {e}")
-            logger.error(f"Raw response: {response.text if 'response' in locals() else 'No response'}")
-            raise ValueError(f"Invalid JSON response from AI: {e}")
-        
+
+            # Try AI parsing first
+            try:
+                return self._parse_with_ai(cleaned_input)
+            except Exception as ai_error:
+                logger.warning(f"AI parsing failed: {ai_error}, trying fallback parser")
+                return self._parse_with_fallback(cleaned_input)
+
         except Exception as e:
             logger.error(f"Transaction parsing error: {e}")
             raise ValueError(f"Failed to parse transaction: {e}")
+
+    def _parse_with_ai(self, user_input: str) -> Dict[str, Any]:
+        """Parse using Gemini AI."""
+        # Create prompt
+        prompt = self.create_parsing_prompt(user_input)
+
+        # Generate response using Gemini
+        logger.info(f"Parsing transaction with AI: '{user_input}'")
+        response = self.model.generate_content(prompt)
+
+        if not response.text:
+            raise ValueError("Empty response from Gemini AI")
+
+        # Clean and parse JSON response
+        json_text = response.text.strip()
+
+        # Remove markdown code blocks if present
+        if json_text.startswith('```json'):
+            json_text = json_text[7:]
+        if json_text.startswith('```'):
+            json_text = json_text[3:]
+        if json_text.endswith('```'):
+            json_text = json_text[:-3]
+
+        json_text = json_text.strip()
+
+        # Parse JSON
+        parsed_data = json.loads(json_text)
+
+        # Validate required fields
+        required_fields = ['tipe', 'nominal', 'akun', 'kategori', 'catatan']
+        for field in required_fields:
+            if field not in parsed_data:
+                raise ValueError(f"Missing required field: {field}")
+
+        # Validate and clean data
+        validated_data = self._validate_transaction_data(parsed_data)
+
+        logger.info(f"AI successfully parsed transaction: {validated_data}")
+        return validated_data
+
+    def _parse_with_fallback(self, user_input: str) -> Dict[str, Any]:
+        """Fallback parser for simple transaction patterns."""
+        logger.info(f"Using fallback parser for: '{user_input}'")
+
+        # Simple pattern matching for common cases
+        input_lower = user_input.lower()
+
+        # Default values
+        result = {
+            'tipe': 'pengeluaran',
+            'nominal': 0,
+            'akun': 'cash',
+            'kategori': 'lainnya',
+            'catatan': user_input
+        }
+
+        # Detect income keywords
+        income_keywords = ['gaji', 'salary', 'bonus', 'terima', 'dapat', 'penghasilan']
+        if any(keyword in input_lower for keyword in income_keywords):
+            result['tipe'] = 'pemasukan'
+            result['kategori'] = 'gaji'
+
+        # Extract amount
+        import re
+        # Find patterns like: 50k, 500rb, 2jt, 50000
+        amount_patterns = [
+            r'(\d+(?:\.\d+)?)\s*jt',  # 2jt -> 2000000
+            r'(\d+(?:\.\d+)?)\s*rb',  # 500rb -> 500000
+            r'(\d+(?:\.\d+)?)\s*k',   # 50k -> 50000
+            r'(\d+(?:\.\d+)?)'        # 50000 -> 50000
+        ]
+
+        for pattern in amount_patterns:
+            match = re.search(pattern, input_lower)
+            if match:
+                amount = float(match.group(1))
+                if 'jt' in input_lower:
+                    amount *= 1000000
+                elif 'rb' in input_lower:
+                    amount *= 1000
+                elif 'k' in input_lower:
+                    amount *= 1000
+
+                result['nominal'] = amount
+                break
+
+        # Detect account
+        account_keywords = {
+            'cash': ['cash', 'tunai'],
+            'bank': ['bank', 'rekening'],
+            'dana': ['dana'],
+            'gopay': ['gopay'],
+            'ovo': ['ovo']
+        }
+
+        for account, keywords in account_keywords.items():
+            if any(keyword in input_lower for keyword in account_keywords[account]):
+                result['tipe'] = account
+                break
+
+        # Validate result
+        if result['nominal'] <= 0:
+            raise ValueError("Could not extract valid amount from input")
+
+        logger.info(f"Fallback parser result: {result}")
+        return self._validate_transaction_data(result)
     
     def _validate_transaction_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
