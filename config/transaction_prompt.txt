@@ -1,0 +1,27 @@
+Analyze the following transaction input and extract structured information. Return ONLY a valid JSON object with no additional text.
+
+Input: "{user_input}"
+
+Extract the following information:
+- tipe: "pemasukan" (income) or "pengeluaran" (expense) - default to "pengeluaran" if unclear
+- nominal: numeric amount (convert from text like "15k" to 15000, "500rb" to 500000)
+- akun: payment method or account (e.g., "cash", "bank", "kartu kredit", "dana", "gopay", "ovo")
+- kategori: transaction category (e.g., "makanan", "transportasi", "belanja", "hiburan", "kesehatan", "pendidikan", "lainnya")
+- catatan: description or notes about the transaction
+
+Rules:
+1. If amount contains "k" (like "15k"), multiply by 1000
+2. If amount contains "rb" (like "500rb"), multiply by 1000
+3. If amount contains "jt" (like "2jt"), multiply by 1000000
+4. Default akun to "cash" if not specified
+5. Infer kategori from context (food items = "makanan", transport = "transportasi", etc.)
+6. Use the item/service name as catatan
+7. Words like "beli", "bayar", "buat" indicate expenses
+8. Words like "dapat", "terima", "gaji" indicate income
+
+Examples:
+Input: "bakso 15k pake cash" → {"tipe": "pengeluaran", "nominal": 15000, "akun": "cash", "kategori": "makanan", "catatan": "bakso"}
+Input: "gojek ke kantor 20rb" → {"tipe": "pengeluaran", "nominal": 20000, "akun": "cash", "kategori": "transportasi", "catatan": "gojek ke kantor"}
+Input: "gaji bulan ini 5jt" → {"tipe": "pemasukan", "nominal": 5000000, "akun": "bank", "kategori": "gaji", "catatan": "gaji bulan ini"}
+
+Return only the JSON object:

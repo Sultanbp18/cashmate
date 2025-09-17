@@ -1,0 +1,15 @@
+# Database
+psycopg2-binary==2.9.9
+SQLAlchemy==2.0.23
+
+# AI Integration
+google-generativeai==0.3.2
+
+# Telegram Bot
+python-telegram-bot==20.7
+
+# Environment Variables
+python-dotenv==1.0.0
+
+# Utilities
+typing-extensions==4.8.0
