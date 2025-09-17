@@ -6,7 +6,7 @@ Telegram interface for CashMate personal money tracker.
 import os
 import logging
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, List
 import asyncio
 from telegram import Update, BotCommand
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
