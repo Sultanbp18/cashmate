@@ -59,10 +59,48 @@ class GeminiTransactionParser:
         return f'''
 Analyze this transaction: "{user_input}"
 
-Return only JSON with: tipe, nominal, akun, kategori, catatan
-Rules: k=1000, rb=1000, jt=1000000. Default akun="cash", tipe="pengeluaran"
+IMPORTANT: First determine if this is a TRANSFER or REGULAR transaction.
 
-Example: "bakso 15k" → {{"tipe": "pengeluaran", "nominal": 15000, "akun": "cash", "kategori": "makanan", "catatan": "bakso"}}
+TRANSFER indicators:
+- Words like: transfer, pindah, tarik tunai, ambil tunai, dari, ke, topup, isi
+- Patterns like: "Transfer X ke Y", "dari X ke Y", "X ke Y" (where X and Y are accounts)
+- Withdrawal patterns: "Tarik tunai BANK", "Ambil tunai dari BANK" (BANK to cash)
+- Topup patterns: "Topup GOPAY", "Isi saldo DANA" (cash to e-wallet)
+- Moving money between accounts
+
+If it's a TRANSFER, use this format:
+{{"tipe": "transfer", "nominal": number, "akun_asal": "source_account", "akun_tujuan": "destination_account", "catatan": "description"}}
+
+If it's a REGULAR transaction (income/expense), use this format:
+{{"tipe": "pemasukan|pengeluaran", "nominal": number, "akun": "account_name", "kategori": "category", "catatan": "description"}}
+
+Rules:
+- k=1000, rb=1000, jt=1000000
+- For transfers: extract source and destination accounts from the text
+- Common accounts: bca, bni, bri, mandiri, dana, gopay, ovo, cash
+- Default akun="cash" for regular transactions
+- Default tipe="pengeluaran" for regular transactions
+
+CATEGORY GUIDELINES for expenses:
+- makanan: food, drinks, restaurants, cafes, groceries, snacks (kopi, dimsum, bakso, etc.)
+- transportasi: gojek, grab, taxi, bensin, tol, parkir, transport
+- belanja: shopping, clothes, electronics, household items
+- hiburan: movies, games, entertainment, travel, hotel
+- lainnya: everything else not fitting above categories
+
+Examples:
+"bakso 15k" → {{"tipe": "pengeluaran", "nominal": 15000, "akun": "cash", "kategori": "makanan", "catatan": "bakso"}}
+"Kopi Lawson 20k" → {{"tipe": "pengeluaran", "nominal": 20000, "akun": "cash", "kategori": "makanan", "catatan": "Kopi Lawson"}}
+"Dimsum di familymart 50k" → {{"tipe": "pengeluaran", "nominal": 50000, "akun": "cash", "kategori": "makanan", "catatan": "Dimsum di familymart"}}
+"gaji 5jt ke bca" → {{"tipe": "pemasukan", "nominal": 5000000, "akun": "bca", "kategori": "gaji", "catatan": "gaji"}}
+"gojek ke kantor 20rb" → {{"tipe": "pengeluaran", "nominal": 20000, "akun": "cash", "kategori": "transportasi", "catatan": "gojek ke kantor"}}
+"bensin 50rb" → {{"tipe": "pengeluaran", "nominal": 50000, "akun": "cash", "kategori": "transportasi", "catatan": "bensin"}}
+"Transfer BNI ke BCA 1jt" → {{"tipe": "transfer", "nominal": 1000000, "akun_asal": "bni", "akun_tujuan": "bca", "catatan": "Transfer BNI ke BCA"}}
+"dari cash ke dana 500k" → {{"tipe": "transfer", "nominal": 500000, "akun_asal": "cash", "akun_tujuan": "dana", "catatan": "dari cash ke dana"}}
+"Tarik tunai BRI 1jt" → {{"tipe": "transfer", "nominal": 1000000, "akun_asal": "bri", "akun_tujuan": "cash", "catatan": "Tarik tunai BRI"}}
+"Ambil tunai dari BCA 500k" → {{"tipe": "transfer", "nominal": 500000, "akun_asal": "bca", "akun_tujuan": "cash", "catatan": "Ambil tunai dari BCA"}}
+"Topup gopay 30k" → {{"tipe": "transfer", "nominal": 30000, "akun_asal": "cash", "akun_tujuan": "gopay", "catatan": "Topup gopay"}}
+"Isi saldo dana 50k" → {{"tipe": "transfer", "nominal": 50000, "akun_asal": "cash", "akun_tujuan": "dana", "catatan": "Isi saldo dana"}}
 '''
     
     def parse_transaction(self, user_input: str) -> Dict[str, Any]:
@@ -127,6 +165,24 @@ Example: "bakso 15k" → {{"tipe": "pengeluaran", "nominal": 15000, "akun": "cas
         # Parse JSON
         parsed_data = json.loads(json_text)
 
+        # Additional transfer detection for AI responses that might be wrong
+        input_lower = user_input.lower()
+        transfer_keywords = ['transfer', 'pindah', 'tarik tunai', 'ambil tunai', 'dari', 'ke', 'topup', 'top up', 'isi', 'isi saldo']
+        withdrawal_keywords = ['tarik tunai', 'ambil tunai']
+        topup_keywords = ['topup', 'top up', 'isi', 'isi saldo']
+        has_transfer_keywords = any(keyword in input_lower for keyword in transfer_keywords)
+        has_withdrawal_keywords = any(keyword in input_lower for keyword in withdrawal_keywords)
+        has_topup_keywords = any(keyword in input_lower for keyword in topup_keywords)
+
+        # If input has transfer/withdrawal/topup keywords but AI didn't detect it as transfer, fix it
+        if (has_transfer_keywords or has_withdrawal_keywords or has_topup_keywords) and parsed_data.get('tipe', '').lower() != 'transfer':
+            logger.warning(f"AI missed transfer/withdrawal/topup detection for input with keywords: {user_input}")
+            # Try to fix it by running fallback parser for transfer detection
+            fallback_result = self._parse_with_fallback(user_input)
+            if fallback_result.get('tipe') == 'transfer':
+                logger.info("Using fallback transfer detection result")
+                return fallback_result
+
         # Validate required fields based on transaction type
         tipe = parsed_data.get('tipe', '').lower()
 
@@ -162,7 +218,10 @@ Example: "bakso 15k" → {{"tipe": "pengeluaran", "nominal": 15000, "akun": "cas
         }
 
         # Detect transfer keywords first
-        transfer_keywords = ['transfer', 'pindah', 'tarik tunai', 'tarik', 'ambil', 'kirim', 'dari', 'ke']
+        transfer_keywords = ['transfer', 'pindah', 'tarik tunai', 'tarik', 'ambil', 'kirim', 'dari', 'ke', 'topup', 'top up', 'isi', 'isi saldo']
+        withdrawal_keywords = ['tarik tunai', 'ambil tunai', 'tarik', 'ambil']
+        topup_keywords = ['topup', 'top up', 'isi', 'isi saldo']
+
         if any(keyword in input_lower for keyword in transfer_keywords):
             result['tipe'] = 'transfer'
             result['kategori'] = 'transfer'
@@ -170,7 +229,7 @@ Example: "bakso 15k" → {{"tipe": "pengeluaran", "nominal": 15000, "akun": "cas
 
             # Try to extract source and destination accounts for transfers
             words = input_lower.split()
-            # Look for patterns like "dari X ke Y" or "X ke Y"
+            # Look for patterns like "dari X ke Y" or "X ke Y" or "Transfer X ke Y"
             dari_index = -1
             ke_index = -1
 
@@ -184,6 +243,41 @@ Example: "bakso 15k" → {{"tipe": "pengeluaran", "nominal": 15000, "akun": "cas
             source_account = 'cash'
             dest_account = 'cash'
 
+            # Special handling for withdrawal patterns like "tarik tunai BRI"
+            is_withdrawal = any(keyword in input_lower for keyword in withdrawal_keywords)
+            is_topup = any(keyword in input_lower for keyword in topup_keywords)
+
+            if is_withdrawal:
+                logger.info("Fallback: Detected withdrawal pattern")
+                # For withdrawals, find the bank account and set destination to cash
+                for word in words:
+                    detected_account = self._detect_account_from_word(word)
+                    if detected_account != 'cash' and detected_account in [
+                        'bca', 'bri', 'bni', 'mandiri', 'btn', 'cimb', 'danamon', 'mega',
+                        'permata', 'panin', 'bukopin', 'maybank', 'btn', 'bjb', 'bsi',
+                        'btpn', 'jenius', 'neo', 'seabank', 'uob', 'ocbc', 'dbs', 'hsbc'
+                    ]:
+                        source_account = detected_account
+                        dest_account = 'cash'
+                        logger.info(f"Fallback: Withdrawal detected - from '{source_account}' to '{dest_account}'")
+                        break
+            elif is_topup:
+                logger.info("Fallback: Detected topup pattern")
+                # For topups, source is cash, destination is the detected e-wallet/bank
+                # Skip transfer/topup keywords and find the actual account
+                transfer_skip_words = set(['topup', 'top', 'up', 'isi', 'saldo'] + [w.replace(' ', '') for w in topup_keywords])
+
+                for word in words:
+                    if word.lower() in transfer_skip_words:
+                        continue  # Skip transfer keywords
+
+                    detected_account = self._detect_account_from_word(word)
+                    if detected_account != 'cash' and detected_account not in transfer_skip_words:
+                        source_account = 'cash'
+                        dest_account = detected_account
+                        logger.info(f"Fallback: Topup detected - from '{source_account}' to '{dest_account}'")
+                        break
+
             if dari_index != -1 and ke_index != -1 and ke_index > dari_index:
                 # Pattern: "dari source ke destination"
                 if dari_index + 1 < len(words):
@@ -191,11 +285,29 @@ Example: "bakso 15k" → {{"tipe": "pengeluaran", "nominal": 15000, "akun": "cas
                 if ke_index + 1 < len(words):
                     dest_account = self._detect_account_from_word(words[ke_index + 1])
             elif ke_index != -1:
-                # Pattern: "source ke destination"
+                # Pattern: "source ke destination" or "Transfer source ke destination"
                 if ke_index > 0:
-                    source_account = self._detect_account_from_word(words[ke_index - 1])
+                    potential_source = words[ke_index - 1]
+                    # Check if the word before "ke" is a transfer keyword
+                    if potential_source.lower() in ['transfer', 'pindah', 'tarik', 'ambil', 'kirim', 'topup', 'isi']:
+                        # If it's a transfer keyword, look further back for the source account
+                        if ke_index > 1:
+                            source_account = self._detect_account_from_word(words[ke_index - 2])
+                    else:
+                        # It's likely the source account
+                        source_account = self._detect_account_from_word(potential_source)
+
                 if ke_index + 1 < len(words):
-                    dest_account = self._detect_account_from_word(words[ke_index + 1])
+                    potential_dest = words[ke_index + 1]
+                    # Skip if destination is also a transfer keyword
+                    if potential_dest.lower() not in ['transfer', 'pindah', 'tarik', 'ambil', 'kirim', 'topup', 'isi']:
+                        dest_account = self._detect_account_from_word(potential_dest)
+
+                # Special handling for "Transfer X ke Y" pattern
+                if ke_index > 1 and words[ke_index - 2].lower() == 'transfer':
+                    source_account = self._detect_account_from_word(words[ke_index - 1])
+                    if ke_index + 1 < len(words):
+                        dest_account = self._detect_account_from_word(words[ke_index + 1])
 
             result['akun_asal'] = source_account
             result['akun_tujuan'] = dest_account
@@ -207,6 +319,53 @@ Example: "bakso 15k" → {{"tipe": "pengeluaran", "nominal": 15000, "akun": "cas
             result['tipe'] = 'pemasukan'
             result['kategori'] = 'gaji'
             logger.info(f"Fallback: Detected income from keywords: {[kw for kw in income_keywords if kw in input_lower]}")
+
+        # Detect expense categories
+        food_keywords = [
+            'makan', 'kopi', 'nasi', 'ayam', 'ikan', 'daging', 'sayur', 'buah', 'jus', 'minum',
+            'bakso', 'mie', 'soto', 'rawon', 'gulai', 'rendang', 'gudeg', 'pecel', 'karedok',
+            'dimsum', 'pizza', 'burger', 'kentang', 'goreng', 'bakar', 'kukus', 'rebus',
+            'roti', 'kue', 'donat', 'martabak', 'pancake', 'waffle', 'es', 'jus', 'soda',
+            'lawson', 'indomaret', 'alfamart', 'familymart', 'circle k', 'shell select',
+            'restoran', 'warung', 'cafe', 'kedai', 'kantin', 'food court', 'foodcourt'
+        ]
+
+        transport_keywords = [
+            'gojek', 'grab', 'uber', 'taxi', 'ojek', 'angkot', 'bus', 'kereta', 'pesawat',
+            'bensin', 'pertamax', 'pertalite', 'solar', 'parkir', 'tol', 'tiket', 'terminal',
+            'stasiun', 'bandara', 'transport', 'perjalanan', 'jalan', 'naik', 'turun'
+        ]
+
+        shopping_keywords = [
+            'beli', 'belanja', 'shop', 'mall', 'supermarket', 'minimarket', 'pasar',
+            'toko', 'warung', 'kios', 'baju', 'celana', 'sepatu', 'tas', 'topi',
+            'elektronik', 'handphone', 'laptop', 'charger', 'kabel', 'baterai',
+            'kosmetik', 'sabun', 'shampoo', 'sampo', 'cream', 'parfum', 'skincare'
+        ]
+
+        entertainment_keywords = [
+            'nonton', 'bioskop', 'film', 'konser', 'musik', 'game', 'gaming', 'main',
+            'hiburan', 'entertainment', 'rekreasi', 'liburan', 'wisata', 'hotel',
+            'penginapan', 'villa', 'resort', 'travel', 'tour', 'tiket wisata'
+        ]
+
+        # Category detection logic
+        if result['tipe'] == 'pengeluaran':  # Only for expenses
+            if any(keyword in input_lower for keyword in food_keywords):
+                result['kategori'] = 'makanan'
+                logger.info(f"Fallback: Detected food category from keywords: {[kw for kw in food_keywords if kw in input_lower]}")
+            elif any(keyword in input_lower for keyword in transport_keywords):
+                result['kategori'] = 'transportasi'
+                logger.info(f"Fallback: Detected transport category from keywords: {[kw for kw in transport_keywords if kw in input_lower]}")
+            elif any(keyword in input_lower for keyword in shopping_keywords):
+                result['kategori'] = 'belanja'
+                logger.info(f"Fallback: Detected shopping category from keywords: {[kw for kw in shopping_keywords if kw in input_lower]}")
+            elif any(keyword in input_lower for keyword in entertainment_keywords):
+                result['kategori'] = 'hiburan'
+                logger.info(f"Fallback: Detected entertainment category from keywords: {[kw for kw in entertainment_keywords if kw in input_lower]}")
+            else:
+                # Keep default 'lainnya' for uncategorized expenses
+                result['kategori'] = 'lainnya'
 
         # Extract amount
         import re
@@ -339,8 +498,20 @@ Example: "bakso 15k" → {{"tipe": "pengeluaran", "nominal": 15000, "akun": "cas
         """Detect account type from a single word."""
         word_lower = word.lower()
 
-        # Specific bank detection
-        specific_banks = ['bca', 'bri', 'bni', 'mandiri', 'btn', 'cimb', 'danamon', 'mega', 'permata', 'panin', 'bukopin', 'maybank']
+        # Skip transfer-related keywords that shouldn't be treated as accounts
+        transfer_keywords = [
+            'transfer', 'pindah', 'tarik', 'ambil', 'kirim', 'dari', 'ke',
+            'topup', 'top', 'up', 'isi', 'saldo', 'tunai'
+        ]
+        if word_lower in transfer_keywords:
+            return 'cash'  # Default fallback
+
+        # Specific bank detection - expanded list
+        specific_banks = [
+            'bca', 'bri', 'bni', 'mandiri', 'btn', 'cimb', 'danamon', 'mega',
+            'permata', 'panin', 'bukopin', 'maybank', 'btn', 'bjb', 'bsi',
+            'btpn', 'jenius', 'neo', 'seabank', 'uob', 'ocbc', 'dbs', 'hsbc'
+        ]
         if word_lower in specific_banks:
             return word_lower
 
@@ -348,7 +519,7 @@ Example: "bakso 15k" → {{"tipe": "pengeluaran", "nominal": 15000, "akun": "cas
         account_mapping = {
             'cash': ['cash', 'tunai', 'uang'],
             'dana': ['dana'],
-            'gopay': ['gopay'],
+            'gopay': ['gopay', 'gojek'],
             'ovo': ['ovo'],
             'bank': ['bank', 'rekening']
         }
@@ -356,6 +527,10 @@ Example: "bakso 15k" → {{"tipe": "pengeluaran", "nominal": 15000, "akun": "cas
         for account, keywords in account_mapping.items():
             if word_lower in keywords:
                 return account
+
+        # If it's a 3-letter word that looks like a bank code, treat it as a bank
+        if len(word_lower) == 3 and word_lower.isalpha():
+            return word_lower
 
         # Default to the word itself (might be a custom account name)
         return word_lower
