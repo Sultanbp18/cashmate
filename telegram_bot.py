@@ -10,6 +10,7 @@ from typing import Dict, Any, List
 import asyncio
 from telegram import Update, BotCommand
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 
 # Import our modules
@@ -65,8 +66,9 @@ class CashMateTelegramBot:
                     schema_exists = cursor.fetchone()[0]
 
                     if not schema_exists:
+                        logger.info(f"Creating schema {schema_name} for user {user_id}")
                         # Create user schema
-                        cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
+                        cursor.execute(f"CREATE SCHEMA {schema_name}")
 
                         # Create tables in user schema
                         self._create_user_tables(cursor, schema_name)
@@ -74,15 +76,11 @@ class CashMateTelegramBot:
                         # Create default accounts for user
                         self._create_default_accounts(cursor, schema_name)
 
-                        # Grant permissions
-                        cursor.execute(f"GRANT USAGE ON SCHEMA {schema_name} TO PUBLIC")
-                        cursor.execute(f"GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA {schema_name} TO PUBLIC")
-                        cursor.execute(f"GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA {schema_name} TO PUBLIC")
-
                         conn.commit()
-                        logger.info(f"Created schema and tables for user {user_id}")
+                        logger.info(f"Successfully created schema and tables for user {user_id}")
                         return True
                     else:
+                        logger.info(f"Schema {schema_name} already exists for user {user_id}")
                         # Check if tables exist, create if missing
                         self._ensure_user_tables_exist(cursor, schema_name)
                         conn.commit()
@@ -90,6 +88,7 @@ class CashMateTelegramBot:
 
         except Exception as e:
             logger.error(f"Error ensuring user schema for {user_id}: {e}")
+            logger.error(f"Full error details: {str(e)}")
             return False
 
     def _create_user_tables(self, cursor, schema_name: str):
@@ -180,22 +179,15 @@ class CashMateTelegramBot:
     
     def _setup_handlers(self):
         """Setup all command and message handlers."""
-        
-        # Command handlers
+
+        # Core command handlers (simplified)
         self.application.add_handler(CommandHandler("start", self.start_command))
         self.application.add_handler(CommandHandler("help", self.help_command))
-        self.application.add_handler(CommandHandler("input", self.input_command))
+        self.application.add_handler(CommandHandler("accounts", self.accounts_command))
         self.application.add_handler(CommandHandler("summary", self.summary_command))
         self.application.add_handler(CommandHandler("recent", self.recent_command))
-        self.application.add_handler(CommandHandler("balance", self.balance_command))
+        self.application.add_handler(CommandHandler("input", self.input_command))
         self.application.add_handler(CommandHandler("test", self.test_command))
-        self.application.add_handler(CommandHandler("debug", self.debug_command))
-
-        # Account management commands
-        self.application.add_handler(CommandHandler("setup", self.setup_command))
-        self.application.add_handler(CommandHandler("accounts", self.accounts_command))
-        self.application.add_handler(CommandHandler("add_account", self.add_account_command))
-        self.application.add_handler(CommandHandler("remove_account", self.remove_account_command))
         
         # Message handler for natural language input (only for transaction-like messages)
         self.application.add_handler(
@@ -203,89 +195,106 @@ class CashMateTelegramBot:
         )
     
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /start command."""
+        """Handle /start command with auto-setup."""
         user = update.effective_user
-        welcome_message = f"""
-🏦 *CashMate - Personal Money Tracker*
+        user_id = user.id
+
+        # Auto-setup user database
+        setup_success = self.ensure_user_schema(user_id)
+
+        if setup_success:
+            welcome_message = f"""
+🏦 *CashMate - Simple Money Tracker*
 
 Halo {user.first_name}! 👋
 
-Saya adalah bot untuk tracking keuangan pribadi dengan AI. 
-Anda bisa mencatat transaksi dengan bahasa natural Indonesia!
+✅ *Database Anda sudah siap!*
 
-*🚀 Quick Start:*
-• `/input bakso 15k pake cash` - Catat transaksi
-• `/summary` - Ringkasan bulanan
+*💡 Cara Pakai:*
+Cukup kirim pesan transaksi langsung:
+• `gaji 50k cash` ✅
+• `bakso 15k` ✅
+• `bensin 30rb dana` ✅
+
+*📋 Commands:*
+• `/accounts` - Lihat akun & saldo
+• `/summary` - Ringkasan bulan
 • `/recent` - Transaksi terakhir
-• `/help` - Lihat semua command
+• `/help` - Bantuan lengkap
 
-*💡 Smart Transaction Detection:*
-Bot akan otomatis mendeteksi transaksi dari pesan Anda:
-• `bakso 15k cash` ✅ (langsung diproses)
-• `gojek 20rb ke kantor` ✅ (langsung diproses)
-• `gaji 5jt ke bank` ✅ (langsung diproses)
-• `halo bot` 🤔 (akan beri panduan)
+*💳 Kelola Akun:*
+• `mandiri bank` - Tambah akun
+• `hapus mandiri` - Hapus akun
 
-*🤖 AI Parser:*
-• **Hanya digunakan** untuk transaksi yang terdeteksi
-• **Hemat quota** - tidak dipanggil untuk chat biasa
-• **Smart categorization** berdasarkan konteks
+*🚀 Mulai sekarang:*
+Kirim transaksi pertamamu! 🎯
+            """
+        else:
+            welcome_message = f"""
+❌ *Setup Gagal*
 
-Selamat mencatat! 📊💰
-        """
-        
+Halo {user.first_name}, ada masalah dengan setup database Anda.
+
+💡 *Coba:*
+1. `/test` - Test koneksi sistem
+2. Hubungi admin jika masalah berlanjut
+
+Atau coba lagi nanti dengan `/start`
+            """
+
         await update.message.reply_text(welcome_message, parse_mode='Markdown')
     
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /help command."""
+        """Handle /help command with simplified menu."""
         help_message = """
-🏦 *CashMate Commands*
+🏦 *CashMate - Simple Money Tracker*
 
-*📝 Transaction Commands:*
-• `/input <transaksi>` - Catat transaksi
-  Contoh: `/input bakso 15k pake cash`
+*🚀 Quick Start:*
+Cukup kirim pesan transaksi langsung:
+• `gaji 50k cash` ✅
+• `bakso 15k` ✅
+• `bensin 30rb dana` ✅
 
-*📊 Report Commands:*
-• `/summary [tahun] [bulan]` - Ringkasan bulanan
-  Contoh: `/summary` atau `/summary 2024 1`
-• `/recent [jumlah]` - Transaksi terakhir
-  Contoh: `/recent` atau `/recent 5`
-• `/balance` - Saldo semua akun
+*📋 Commands:*
+• `/start` - Welcome & setup otomatis
+• `/accounts` - Lihat akun & saldo
+• `/summary` - Ringkasan bulan ini
+• `/recent` - Transaksi terakhir
+• `/input` - Catat transaksi manual
+• `/test` - Test sistem
+• `/help` - Bantuan ini
 
-*🔧 Utility Commands:*
-• `/test` - Test koneksi database & AI
-• `/debug <text>` - Test AI parser secara manual
-• `/setup` - Setup awal database & akun
-• `/help` - Tampilkan bantuan ini
+*💳 Kelola Akun:*
+Kirim pesan langsung (tanpa /):
+• `mandiri bank` - Tambah akun bank
+• `gopay e-wallet` - Tambah akun e-wallet
+• `hapus mandiri` - Hapus akun
 
-*💳 Account Management:*
-• `/accounts` - Lihat semua akun Anda
-• `/add_account <nama> <tipe>` - Tambah akun baru
-• `/remove_account <nama>` - Hapus akun
+*💡 Smart Features:*
+• 🤖 **AI Parser** - Otomatis detect transaksi
+• 💰 **Auto Balance** - Update saldo otomatis
+• 📊 **Multi-User** - Database terpisah per user
+• ⚡ **Fast Response** - Setup otomatis saat pertama pakai
 
-*💡 Smart Transaction Detection:*
-Bot akan mendeteksi otomatis jika pesan Anda adalah transaksi:
-• `makan siang 25k` ✅ (terdeteksi sebagai transaksi)
-• `bensin 50rb dana` ✅ (terdeteksi sebagai transaksi)
-• `halo bot` ❌ (tidak terdeteksi, akan beri panduan)
+*📱 Contoh Penggunaan:*
+```
+User: /start
+Bot: ✅ Setup otomatis selesai!
 
-*🤖 AI Parser Usage:*
-• **Hanya dipanggil** untuk pesan yang terdeteksi sebagai transaksi
-• **Hemat quota** Gemini API - tidak dipanggil untuk chat biasa
-• **Otomatis categorize** berdasarkan konteks
+User: gaji 50k cash
+Bot: ✅ Transaksi dicatat!
 
-*💰 Format Angka:*
-• `15k` = 15,000
-• `500rb` = 500,000
-• `2jt` = 2,000,000
+User: mandiri bank
+Bot: ✅ Akun bank ditambahkan!
 
-*💳 Akun Support:*
-cash, bank, dana, gopay, ovo, kartu kredit
+User: /accounts
+Bot: 💳 Akun & saldo Anda...
+```
 
-*📋 Kategori Auto:*
-makanan, transportasi, belanja, hiburan, kesehatan, dll
+*❓ Butuh Bantuan?*
+Kirim pesan apapun yang bukan transaksi untuk panduan!
         """
-        
+
         await update.message.reply_text(help_message, parse_mode='Markdown')
     
     async def input_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -327,8 +336,10 @@ makanan, transportasi, belanja, hiburan, kesehatan, dll
                     return
 
             # Get summary from user database
+            logger.info(f"Getting summary for user {user_id}, schema {schema_name}, year {year}, month {month}")
             summary = self._get_user_monthly_summary(schema_name, year, month)
-            
+            logger.info(f"Summary result: {summary}")
+
             # Format summary message
             # Use shared formatting function
             summary_text = f"📊 *Ringkasan {year}-{month:02d}*\n\n"
@@ -364,18 +375,27 @@ makanan, transportasi, belanja, hiburan, kesehatan, dll
     
     async def recent_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /recent command."""
+        user = update.effective_user
+        user_id = user.id
+        schema_name = self.get_user_schema(user_id)
+
         try:
+            # Ensure user schema exists
+            if not self.ensure_user_schema(user_id):
+                await update.message.reply_text("❌ Gagal mengakses database Anda")
+                return
+
             # Default limit
             limit = 10
-            
+
             # Parse custom limit if provided
             if context.args and len(context.args) > 0:
                 limit = int(context.args[0])
                 if limit > 50:  # Prevent too many messages
                     limit = 50
-            
-            # Get recent transactions
-            transactions = self.db.get_recent_transactions(limit)
+
+            # Get recent transactions for this user
+            transactions = self._get_user_recent_transactions(schema_name, limit)
             
             if not transactions:
                 await update.message.reply_text("📄 Belum ada transaksi")
@@ -402,37 +422,10 @@ makanan, transportasi, belanja, hiburan, kesehatan, dll
             logger.error(f"Recent transactions error: {e}")
             await update.message.reply_text("❌ Error mengambil transaksi terakhir")
     
-    async def balance_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /balance command."""
-        try:
-            # Get current month summary to show account balances
-            year = datetime.now().year
-            month = datetime.now().month
-            summary = self.db.get_monthly_summary(year, month)
-            
-            if not summary['saldo_akun']:
-                await update.message.reply_text("💳 Belum ada saldo di akun manapun")
-                return
-            
-            balance_text = "💳 *Saldo Semua Akun:*\n\n"
-            total_balance = 0
-            
-            for account in summary['saldo_akun']:
-                balance_text += f"• *{account['nama']}:* Rp {account['saldo']:,.0f}\n"
-                total_balance += account['saldo']
-            
-            balance_text += f"\n💰 *Total Saldo:* Rp {total_balance:,.0f}"
-            
-            await update.message.reply_text(balance_text, parse_mode='Markdown')
-            
-        except Exception as e:
-            logger.error(f"Balance error: {e}")
-            await update.message.reply_text("❌ Error mengambil saldo")
-    
     async def test_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /test command."""
-        test_message = "🔧 *Testing Connections...*\n\n"
-        
+        test_message = "🔧 *Testing System...*\n\n"
+
         # Test database
         try:
             db_status = self.db.test_connection()
@@ -442,7 +435,7 @@ makanan, transportasi, belanja, hiburan, kesehatan, dll
                 test_message += "❌ Database: Failed\n"
         except Exception as e:
             test_message += f"❌ Database: Error - {str(e)}\n"
-        
+
         # Test AI parser
         try:
             parser_status = self.parser.test_parser()
@@ -452,125 +445,13 @@ makanan, transportasi, belanja, hiburan, kesehatan, dll
                 test_message += "❌ AI Parser: Failed\n"
         except Exception as e:
             test_message += f"❌ AI Parser: Error - {str(e)}\n"
-        
+
         test_message += "\n🏦 Bot siap digunakan!"
-        
+
         await update.message.reply_text(test_message, parse_mode='Markdown')
 
-    async def debug_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /debug command - Test AI parser manually."""
-        if not context.args:
-            await update.message.reply_text(
-                "❌ Format: `/debug <transaction_text>`\n"
-                "Contoh: `/debug gaji 50k cash`\n"
-                "Contoh: `/debug bakso 15k`",
-                parse_mode='Markdown'
-            )
-            return
-
-        transaction_input = ' '.join(context.args)
-
-        try:
-            # Test AI parsing
-            debug_msg = await update.message.reply_text("🔍 Testing AI Parser...")
-
-            # Parse with AI
-            parsed_data = self.parser.parse_transaction(transaction_input)
-
-            # Format debug result
-            debug_result = f"""
-🔍 *AI Parser Debug Result*
-
-📝 *Input:* `{transaction_input}`
-
-🤖 *AI Parsed Result:*
-• Tipe: `{parsed_data['tipe']}`
-• Nominal: `{parsed_data['nominal']}`
-• Akun: `{parsed_data['akun']}`
-• Kategori: `{parsed_data['kategori']}`
-• Catatan: `{parsed_data['catatan']}`
-
-✅ *Status:* AI parsing successful
-            """
-
-            await debug_msg.edit_text(debug_result, parse_mode='Markdown')
-
-        except Exception as e:
-            error_result = f"""
-❌ *AI Parser Debug - Error*
-
-📝 *Input:* `{transaction_input}`
-🔴 *Error:* {str(e)}
-
-💡 *Possible Solutions:*
-• Check Gemini API key
-• Verify internet connection
-• Try simpler input format
-• Use `/test` to check system status
-            """
-
-            await update.message.reply_text(error_result, parse_mode='Markdown')
-
-    async def setup_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /setup command - Initialize user account."""
-        user = update.effective_user
-        user_id = user.id
-
-        try:
-            # Ensure user schema exists
-            schema_created = self.ensure_user_schema(user_id)
-
-            if schema_created:
-                setup_message = f"""
-🏦 *CashMate Setup Completed!*
-
-Halo {user.first_name}! 👋
-
-✅ *Database schema* untuk Anda telah dibuat
-✅ *Tabel akun & transaksi* siap digunakan
-✅ *Akun default* telah ditambahkan
-
-*Akun Default Anda:*
-• 💵 cash (kas)
-• 🏦 bni, bri, bca (bank)
-• 📱 dana, gopay, ovo (e-wallet)
-
-*Langkah Selanjutnya:*
-1. `/accounts` - Lihat semua akun Anda
-2. `/add_account nama_akun tipe` - Tambah akun baru
-3. Mulai catat transaksi!
-
-Contoh: `gaji 50k cash` atau `/input bakso 15k`
-                """
-            else:
-                setup_message = f"""
-✅ *CashMate Sudah Siap Digunakan!*
-
-Halo {user.first_name}! Database Anda sudah ter-setup sebelumnya.
-
-*Gunakan commands berikut:*
-• `/accounts` - Lihat akun Anda
-• `/summary` - Ringkasan bulanan
-• `/recent` - Transaksi terakhir
-
-Atau langsung catat transaksi: `gaji 50k cash`
-                """
-
-            await update.message.reply_text(setup_message, parse_mode='Markdown')
-
-        except Exception as e:
-            logger.error(f"Setup error for user {user_id}: {e}")
-            error_message = f"""
-❌ *Setup Gagal*
-
-Error: {str(e)}
-
-💡 *Coba lagi dalam beberapa saat atau hubungi admin*
-            """
-            await update.message.reply_text(error_message, parse_mode='Markdown')
-
     async def accounts_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /accounts command - Show user accounts."""
+        """Handle /accounts command - Show user accounts and balances."""
         user = update.effective_user
         user_id = user.id
         schema_name = self.get_user_schema(user_id)
@@ -581,28 +462,34 @@ Error: {str(e)}
                 await update.message.reply_text("❌ Gagal mengakses database Anda")
                 return
 
+            logger.info(f"Getting accounts for user {user_id}, schema {schema_name}")
             with self.db.get_connection() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                     # Set search path to user schema
                     cursor.execute(f"SET search_path TO {schema_name}")
 
-                    # Get all accounts
+                    # Get all accounts with balances
                     cursor.execute(f"SELECT nama, tipe, saldo FROM {schema_name}.akun ORDER BY tipe, nama")
 
                     accounts = cursor.fetchall()
+                    logger.info(f"Found {len(accounts)} accounts: {accounts}")
 
                     if not accounts:
                         accounts_message = f"""
 📭 *Belum Ada Akun*
 
-Anda belum memiliki akun. Gunakan:
-• `/setup` - Setup awal
-• `/add_account nama_akun tipe` - Tambah akun
+Anda belum memiliki akun. Bot akan otomatis membuat akun saat Anda mencatat transaksi pertama.
 
-*Tipe akun:* kas, bank, e-wallet, kartu kredit
+*Coba catat transaksi:*
+• `gaji 50k cash`
+• `bakso 15k dana`
+• `bensin 50rb bank`
                         """
                     else:
-                        accounts_message = f"💳 *Akun Anda ({len(accounts)} total)*\n\n"
+                        # Calculate total balance
+                        total_balance = sum(account['saldo'] for account in accounts)
+
+                        accounts_message = f"💳 *Akun & Saldo Anda*\n\n"
 
                         # Group by type
                         accounts_by_type = {}
@@ -625,9 +512,13 @@ Anda belum memiliki akun. Gunakan:
                                 accounts_message += f"• {account['nama']}: Rp {account['saldo']:,.0f}\n"
                             accounts_message += "\n"
 
-                        accounts_message += "*Commands:*\n"
-                        accounts_message += "• `/add_account nama tipe` - Tambah akun\n"
-                        accounts_message += "• `/remove_account nama` - Hapus akun"
+                        # Total balance
+                        accounts_message += f"💰 *Total Saldo:* Rp {total_balance:,.0f}\n\n"
+
+                        # Quick actions
+                        accounts_message += "*Aksi Cepat:*\n"
+                        accounts_message += "• Ketik `nama_akun baru` untuk tambah akun\n"
+                        accounts_message += "• Contoh: `mandiri bank` atau `gopay e-wallet`"
 
                     await update.message.reply_text(accounts_message, parse_mode='Markdown')
 
@@ -635,175 +526,20 @@ Anda belum memiliki akun. Gunakan:
             logger.error(f"Accounts error for user {user_id}: {e}")
             await update.message.reply_text("❌ Error mengambil data akun")
 
-    async def add_account_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /add_account command - Add new account."""
-        user = update.effective_user
-        user_id = user.id
-        schema_name = self.get_user_schema(user_id)
-
-        if not context.args or len(context.args) < 2:
-            await update.message.reply_text(
-                "❌ Format: `/add_account nama_akun tipe_akun`\n\n"
-                "*Contoh:*\n"
-                "• `/add_account mandiri bank`\n"
-                "• `/add_account shopeepay e-wallet`\n"
-                "• `/add_account tabungan kas`\n\n"
-                "*Tipe yang tersedia:*\n"
-                "• `kas` - Uang tunai\n"
-                "• `bank` - Rekening bank\n"
-                "• `e-wallet` - Dompet digital\n"
-                "• `kartu kredit` - Kartu kredit",
-                parse_mode='Markdown'
-            )
-            return
-
-        account_name = context.args[0].lower()
-        account_type = ' '.join(context.args[1:]).lower()
-
-        # Validate account type
-        valid_types = ['kas', 'bank', 'e-wallet', 'kartu kredit']
-        if account_type not in valid_types:
-            await update.message.reply_text(
-                f"❌ Tipe akun tidak valid: `{account_type}`\n\n"
-                f"*Tipe yang tersedia:* {', '.join(valid_types)}",
-                parse_mode='Markdown'
-            )
-            return
-
-        try:
-            # Ensure user schema exists
-            if not self.ensure_user_schema(user_id):
-                await update.message.reply_text("❌ Gagal mengakses database Anda")
-                return
-
-            with self.db.get_connection() as conn:
-                with conn.cursor() as cursor:
-                    # Set search path to user schema
-                    cursor.execute(f"SET search_path TO {schema_name}")
-
-                    # Check if account already exists
-                    cursor.execute(f"SELECT id FROM {schema_name}.akun WHERE nama = %s", (account_name,))
-                    existing = cursor.fetchone()
-
-                    if existing:
-                        await update.message.reply_text(
-                            f"❌ Akun `{account_name}` sudah ada!\n\n"
-                            "Gunakan nama yang berbeda atau `/accounts` untuk melihat akun Anda.",
-                            parse_mode='Markdown'
-                        )
-                        return
-
-                    # Add new account
-                    cursor.execute(f"""
-                        INSERT INTO {schema_name}.akun (nama, tipe, saldo)
-                        VALUES (%s, %s, 0)
-                    """, (account_name, account_type))
-
-                    conn.commit()
-
-                    success_message = f"""
-✅ *Akun Berhasil Ditambahkan!*
-
-📋 *Detail Akun:*
-• *Nama:* {account_name}
-• *Tipe:* {account_type}
-• *Saldo:* Rp 0
-
-Sekarang Anda bisa menggunakan akun ini:
-`gaji 50k {account_name}` atau `/input makan 25k {account_name}`
-                    """
-
-                    await update.message.reply_text(success_message, parse_mode='Markdown')
-                    logger.info(f"User {user_id} added account: {account_name} ({account_type})")
-
-        except Exception as e:
-            logger.error(f"Add account error for user {user_id}: {e}")
-            await update.message.reply_text("❌ Error menambah akun")
-
-    async def remove_account_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /remove_account command - Remove account."""
-        user = update.effective_user
-        user_id = user.id
-        schema_name = self.get_user_schema(user_id)
-
-        if not context.args:
-            await update.message.reply_text(
-                "❌ Format: `/remove_account nama_akun`\n\n"
-                "*Contoh:*\n"
-                "• `/remove_account mandiri`\n"
-                "• `/remove_account shopeepay`\n\n"
-                "*Catatan:* Akun yang masih memiliki transaksi tidak bisa dihapus.",
-                parse_mode='Markdown'
-            )
-            return
-
-        account_name = context.args[0].lower()
-
-        try:
-            # Ensure user schema exists
-            if not self.ensure_user_schema(user_id):
-                await update.message.reply_text("❌ Gagal mengakses database Anda")
-                return
-
-            with self.db.get_connection() as conn:
-                with conn.cursor() as cursor:
-                    # Set search path to user schema
-                    cursor.execute(f"SET search_path TO {schema_name}")
-
-                    # Check if account exists
-                    cursor.execute(f"SELECT id FROM {schema_name}.akun WHERE nama = %s", (account_name,))
-                    account = cursor.fetchone()
-
-                    if not account:
-                        await update.message.reply_text(
-                            f"❌ Akun `{account_name}` tidak ditemukan!\n\n"
-                            "Gunakan `/accounts` untuk melihat akun Anda.",
-                            parse_mode='Markdown'
-                        )
-                        return
-
-                    # Check if account has transactions
-                    cursor.execute(f"SELECT COUNT(*) FROM {schema_name}.transaksi WHERE id_akun = %s", (account[0],))
-                    transaction_count = cursor.fetchone()[0]
-
-                    if transaction_count > 0:
-                        await update.message.reply_text(
-                            f"❌ Tidak bisa hapus akun `{account_name}`!\n\n"
-                            f"Akun ini memiliki {transaction_count} transaksi.\n"
-                            "Pindahkan transaksi ke akun lain terlebih dahulu.",
-                            parse_mode='Markdown'
-                        )
-                        return
-
-                    # Remove account
-                    cursor.execute(f"DELETE FROM {schema_name}.akun WHERE nama = %s", (account_name,))
-                    conn.commit()
-
-                    success_message = f"""
-✅ *Akun Berhasil Dihapus!*
-
-🗑️ *Akun yang dihapus:* {account_name}
-
-*Catatan:* Akun ini telah dihapus permanen dari database Anda.
-                    """
-
-                    await update.message.reply_text(success_message, parse_mode='Markdown')
-                    logger.info(f"User {user_id} removed account: {account_name}")
-
-        except Exception as e:
-            logger.error(f"Remove account error for user {user_id}: {e}")
-            await update.message.reply_text("❌ Error menghapus akun")
 
     async def handle_transaction_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle non-command messages - only process if it looks like a transaction."""
+        """Handle non-command messages - process transactions or account management."""
         message_text = update.message.text.strip()
 
         # Skip empty messages
         if not message_text:
             return
 
+        # Check if message looks like account management
+        if self._is_account_management(message_text):
+            await self._handle_account_management(update, message_text)
         # Check if message looks like a transaction
-        if self._is_transaction_like(message_text):
+        elif self._is_transaction_like(message_text):
             # Process as transaction input (uses AI parser)
             await self._process_transaction(update, message_text)
         else:
@@ -836,6 +572,30 @@ Sekarang Anda bisa menggunakan akun ini:
         # Must have either keyword + amount OR just amount pattern
         return (has_keyword and has_numbers) or has_amount
 
+    def _is_account_management(self, message: str) -> bool:
+        """Check if message looks like account management."""
+        message_lower = message.lower()
+
+        # Account management patterns
+        account_patterns = [
+            'hapus', 'delete', 'remove',  # Remove account
+            'bank', 'kas', 'e-wallet', 'kartu kredit'  # Add account with type
+        ]
+
+        # Check if it looks like "account_name account_type"
+        words = message_lower.split()
+        if len(words) == 2:
+            account_name, account_type = words
+            valid_types = ['kas', 'bank', 'e-wallet', 'kartu kredit', 'ewallet', 'kartu-kredit']
+            if account_type in valid_types:
+                return True
+
+        # Check for remove patterns
+        if message_lower.startswith(('hapus ', 'delete ', 'remove ')):
+            return True
+
+        return False
+
     async def _handle_non_transaction_message(self, update: Update, message: str):
         """Handle messages that are not transactions."""
         response = f"""
@@ -856,19 +616,187 @@ Pesan Anda: `{message}`
         """
 
         await update.message.reply_text(response, parse_mode='Markdown')
+
+    async def _handle_account_management(self, update: Update, message: str):
+        """Handle account management messages."""
+        user = update.effective_user
+        user_id = user.id
+        schema_name = self.get_user_schema(user_id)
+        message_lower = message.lower()
+
+        try:
+            # Ensure user schema exists
+            if not self.ensure_user_schema(user_id):
+                await update.message.reply_text("❌ Gagal mengakses database Anda")
+                return
+
+            # Handle account removal
+            if message_lower.startswith(('hapus ', 'delete ', 'remove ')):
+                account_name = message_lower.split(' ', 1)[1].strip()
+                await self._remove_account_simple(update, schema_name, account_name)
+                return
+
+            # Handle account addition (format: "account_name account_type")
+            words = message_lower.split()
+            if len(words) == 2:
+                account_name, account_type = words
+
+                # Normalize account type
+                type_mapping = {
+                    'ewallet': 'e-wallet',
+                    'kartu-kredit': 'kartu kredit',
+                    'kartukredit': 'kartu kredit'
+                }
+                account_type = type_mapping.get(account_type, account_type)
+
+                await self._add_account_simple(update, schema_name, account_name, account_type)
+                return
+
+            # If not recognized, show help
+            await update.message.reply_text(
+                "❌ Format tidak dikenali\n\n"
+                "*Untuk menambah akun:* `nama_akun tipe`\n"
+                "*Contoh:* `mandiri bank` atau `gopay e-wallet`\n\n"
+                "*Untuk menghapus akun:* `hapus nama_akun`\n"
+                "*Contoh:* `hapus mandiri`",
+                parse_mode='Markdown'
+            )
+
+        except Exception as e:
+            logger.error(f"Account management error for user {user_id}: {e}")
+            await update.message.reply_text("❌ Error memproses permintaan akun")
+
+    async def _add_account_simple(self, update: Update, schema_name: str, account_name: str, account_type: str):
+        """Add account with simple interface."""
+        user = update.effective_user
+        user_id = user.id
+
+        # Validate account type
+        valid_types = ['kas', 'bank', 'e-wallet', 'kartu kredit']
+        if account_type not in valid_types:
+            await update.message.reply_text(
+                f"❌ Tipe akun `{account_type}` tidak valid\n\n"
+                f"Tipe yang tersedia: {', '.join(valid_types)}",
+                parse_mode='Markdown'
+            )
+            return
+
+        try:
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    # Set search path to user schema
+                    cursor.execute(f"SET search_path TO {schema_name}")
+
+                    # Check if account already exists
+                    cursor.execute(f"SELECT id FROM {schema_name}.akun WHERE nama = %s", (account_name,))
+                    existing = cursor.fetchone()
+
+                    if existing:
+                        await update.message.reply_text(
+                            f"❌ Akun `{account_name}` sudah ada!",
+                            parse_mode='Markdown'
+                        )
+                        return
+
+                    # Add new account
+                    cursor.execute(f"""
+                        INSERT INTO {schema_name}.akun (nama, tipe, saldo)
+                        VALUES (%s, %s, 0)
+                    """, (account_name, account_type))
+
+                    conn.commit()
+
+                    success_message = f"""
+✅ *Akun Ditambahkan!*
+
+📋 *{account_name}* ({account_type})
+💰 Saldo: Rp 0
+
+Sekarang bisa digunakan:
+`gaji 50k {account_name}`
+                    """
+
+                    await update.message.reply_text(success_message, parse_mode='Markdown')
+                    logger.info(f"User {user_id} added account: {account_name} ({account_type})")
+
+        except Exception as e:
+            logger.error(f"Add account error for user {user_id}: {e}")
+            await update.message.reply_text("❌ Error menambah akun")
+
+    async def _remove_account_simple(self, update: Update, schema_name: str, account_name: str):
+        """Remove account with simple interface."""
+        user = update.effective_user
+        user_id = user.id
+
+        try:
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    # Set search path to user schema
+                    cursor.execute(f"SET search_path TO {schema_name}")
+
+                    # Check if account exists
+                    cursor.execute(f"SELECT id FROM {schema_name}.akun WHERE nama = %s", (account_name,))
+                    account = cursor.fetchone()
+
+                    if not account:
+                        await update.message.reply_text(
+                            f"❌ Akun `{account_name}` tidak ditemukan!",
+                            parse_mode='Markdown'
+                        )
+                        return
+
+                    # Check if account has transactions
+                    cursor.execute(f"SELECT COUNT(*) FROM {schema_name}.transaksi WHERE id_akun = %s", (account[0],))
+                    transaction_count = cursor.fetchone()[0]
+
+                    if transaction_count > 0:
+                        await update.message.reply_text(
+                            f"❌ Tidak bisa hapus akun `{account_name}`!\n\n"
+                            f"Akun ini memiliki {transaction_count} transaksi.",
+                            parse_mode='Markdown'
+                        )
+                        return
+
+                    # Remove account
+                    cursor.execute(f"DELETE FROM {schema_name}.akun WHERE nama = %s", (account_name,))
+                    conn.commit()
+
+                    success_message = f"""
+✅ *Akun Dihapus!*
+
+🗑️ `{account_name}` telah dihapus
+                    """
+
+                    await update.message.reply_text(success_message, parse_mode='Markdown')
+                    logger.info(f"User {user_id} removed account: {account_name}")
+
+        except Exception as e:
+            logger.error(f"Remove account error for user {user_id}: {e}")
+            await update.message.reply_text("❌ Error menghapus akun")
     
     async def _process_transaction(self, update: Update, transaction_input: str):
         """Process transaction input using AI parser."""
+        user = update.effective_user
+        user_id = user.id
+        schema_name = self.get_user_schema(user_id)
+
         try:
+            # Ensure user schema exists
+            if not self.ensure_user_schema(user_id):
+                await update.message.reply_text("❌ Gagal mengakses database Anda")
+                return
+
             # Show processing message
             processing_msg = await update.message.reply_text("🤖 Processing...")
-            
+
             # Parse with AI
             parsed_data = self.parser.parse_transaction(transaction_input)
-            
-            # Insert to database
-            transaction_id = self.db.insert_transaksi(parsed_data)
-            
+
+            # Insert to user-specific database
+            logger.info(f"Parsed data for user {user_id}: {parsed_data}")
+            transaction_id = self._insert_user_transaction(schema_name, parsed_data)
+            logger.info(f"Transaction {transaction_id} inserted for user {user_id} in schema {schema_name}")
+
             # Format success message
             tipe_emoji = "💰" if parsed_data['tipe'] == 'pemasukan' else "💸"
             success_message = f"""
@@ -950,7 +878,7 @@ Error: {str(e)}
                     """)
                     account_balances = cursor.fetchall()
 
-                    summary = {{
+                    summary = {
                         'year': year,
                         'month': month,
                         'total_pemasukan': float(totals['total_pemasukan'] or 0),
@@ -959,7 +887,7 @@ Error: {str(e)}
                         'total_transaksi': totals['total_transaksi'] or 0,
                         'kategori_summary': [dict(row) for row in category_summary],
                         'saldo_akun': [dict(row) for row in account_balances]
-                    }}
+                    }
 
                     return summary
 
@@ -996,7 +924,7 @@ Error: {str(e)}
             logger.error(f"Error getting recent transactions for schema {schema_name}: {e}")
             raise
 
-    def _get_or_create_user_account(self, schema_name: str, account_name: str, account_type: str = 'kas') -> int:
+    def _get_or_create_user_account(self, schema_name: str, account_name: str, account_type: str = None) -> int:
         """Get existing account ID or create new account for user."""
         try:
             with self.db.get_connection() as conn:
@@ -1011,6 +939,10 @@ Error: {str(e)}
                     if result:
                         return result[0]
 
+                    # Auto-detect account type if not provided
+                    if not account_type:
+                        account_type = self._detect_account_type(account_name)
+
                     # Create new account
                     cursor.execute(f"""
                         INSERT INTO {schema_name}.akun (nama, tipe, saldo)
@@ -1020,12 +952,57 @@ Error: {str(e)}
                     new_id = cursor.fetchone()[0]
                     conn.commit()
 
-                    logger.info(f"Created new account '{account_name}' for schema {schema_name}")
+                    logger.info(f"Created new account '{account_name}' ({account_type}) for schema {schema_name}")
+                    print(f"DEBUG: Created account '{account_name}' with type '{account_type}'")
                     return new_id
 
         except Exception as e:
             logger.error(f"Error in get_or_create_user_account for {schema_name}: {e}")
             raise
+
+    def _detect_account_type(self, account_name: str) -> str:
+        """Detect account type based on account name."""
+        name_lower = account_name.lower()
+        print(f"DEBUG: Detecting account type for '{account_name}' (lowercase: '{name_lower}')")
+
+        # Specific bank detection - if it's a specific bank name, it's a bank account
+        specific_banks = [
+            'bca', 'bri', 'bni', 'mandiri', 'btn', 'cimb', 'danamon', 'mega',
+            'permata', 'panin', 'bukopin', 'maybank', 'btn', 'bjb', 'bsi',
+            'btpn', 'jenius', 'neo', 'seabank', 'uob', 'ocbc', 'dbs', 'hsbc'
+        ]
+        for bank in specific_banks:
+            if bank in name_lower:
+                print(f"DEBUG: Detected specific bank '{bank}' in '{name_lower}', returning 'bank'")
+                return 'bank'
+
+        # Generic bank keywords
+        bank_keywords = ['bank', 'rekening', 'tabungan']
+        if any(keyword in name_lower for keyword in bank_keywords):
+            print(f"DEBUG: Detected generic bank keyword in '{name_lower}', returning 'bank'")
+            return 'bank'
+
+        # E-wallet detection
+        ewallet_keywords = ['dana', 'gopay', 'ovo', 'linkaja', 'shopeepay', 'sakuku', 'gopaydriver']
+        if any(keyword in name_lower for keyword in ewallet_keywords):
+            print(f"DEBUG: Detected e-wallet in '{name_lower}', returning 'e-wallet'")
+            return 'e-wallet'
+
+        # Credit card detection
+        credit_keywords = ['kartu kredit', 'credit', 'cc', 'visa', 'mastercard', 'amex']
+        if any(keyword in name_lower for keyword in credit_keywords):
+            print(f"DEBUG: Detected credit card in '{name_lower}', returning 'kartu kredit'")
+            return 'kartu kredit'
+
+        # Cash detection
+        cash_keywords = ['cash', 'tunai', 'uang']
+        if any(keyword in name_lower for keyword in cash_keywords):
+            print(f"DEBUG: Detected cash in '{name_lower}', returning 'kas'")
+            return 'kas'
+
+        # Default to kas (cash)
+        print(f"DEBUG: No specific type detected for '{name_lower}', defaulting to 'kas'")
+        return 'kas'
 
     def _insert_user_transaction(self, schema_name: str, transaksi_data: Dict[str, Any]) -> int:
         """Insert transaction into user schema."""
@@ -1069,24 +1046,19 @@ Error: {str(e)}
             raise
     
     async def setup_bot_commands(self):
-        """Setup bot commands menu."""
+        """Setup simplified bot commands menu."""
         commands = [
             BotCommand("start", "Mulai menggunakan CashMate"),
             BotCommand("help", "Bantuan dan panduan"),
-            BotCommand("setup", "Setup awal database & akun"),
-            BotCommand("input", "Catat transaksi: /input bakso 15k cash"),
+            BotCommand("accounts", "Lihat akun & saldo"),
             BotCommand("summary", "Ringkasan bulanan"),
             BotCommand("recent", "Transaksi terakhir"),
-            BotCommand("balance", "Lihat saldo semua akun"),
-            BotCommand("accounts", "Lihat semua akun Anda"),
-            BotCommand("add_account", "Tambah akun: /add_account nama tipe"),
-            BotCommand("remove_account", "Hapus akun: /remove_account nama"),
-            BotCommand("test", "Test koneksi database & AI"),
-            BotCommand("debug", "Test AI parser: /debug gaji 50k cash"),
+            BotCommand("input", "Catat transaksi manual"),
+            BotCommand("test", "Test koneksi sistem"),
         ]
-        
+
         await self.application.bot.set_my_commands(commands)
-        logger.info("Bot commands menu setup completed")
+        logger.info("Simplified bot commands menu setup completed")
     
     async def run(self):
         """Run the bot."""

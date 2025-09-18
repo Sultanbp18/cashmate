@@ -23,13 +23,14 @@ IMPORTANT RULES:
    - Default to "pengeluaran" if unclear
 
 3. **Account Detection:**
-   - cash/tunai = "cash"
-   - bank/rekening = "bank"
-   - dana = "dana"
-   - gopay = "gopay"
-   - ovo = "ovo"
-   - kartu kredit/credit card = "kartu kredit"
-   - Default to "cash" if not specified
+    - cash/tunai/uang = "cash"
+    - Specific banks: bca/bri/bni/mandiri/btn/cimb/danamon/mega/permata/panin/bukopin/maybank = use the specific bank name (e.g., "bca", "bri")
+    - Generic bank/rekening = "bank"
+    - dana = "dana"
+    - gopay = "gopay"
+    - ovo = "ovo"
+    - kartu kredit/credit card/cc/visa/mastercard = "kartu kredit"
+    - Default to "cash" if not specified
 
 4. **Category Detection:**
    - Food: makan, minum, bakso, nasi, ayam, makanan, restoran, cafe
@@ -52,8 +53,8 @@ Output: {{"tipe": "pengeluaran", "nominal": 15000, "akun": "cash", "kategori": "
 Input: "gojek ke kantor 20rb"
 Output: {{"tipe": "pengeluaran", "nominal": 20000, "akun": "cash", "kategori": "transportasi", "catatan": "gojek ke kantor"}}
 
-Input: "gaji bulan ini 5jt ke bank"
-Output: {{"tipe": "pemasukan", "nominal": 5000000, "akun": "bank", "kategori": "gaji", "catatan": "gaji bulan ini"}}
+Input: "gaji bulan ini 5jt ke bca"
+Output: {{"tipe": "pemasukan", "nominal": 5000000, "akun": "bca", "kategori": "gaji", "catatan": "gaji bulan ini"}}
 
 Input: "beli buku 50rb dana"
 Output: {{"tipe": "pengeluaran", "nominal": 50000, "akun": "dana", "kategori": "belanja", "catatan": "beli buku"}}

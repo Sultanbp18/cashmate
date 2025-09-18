@@ -183,13 +183,29 @@ Example: "bakso 15k" → {{"tipe": "pengeluaran", "nominal": 15000, "akun": "cas
                 break
 
         # Detect account (don't overwrite 'tipe' field!)
-        account_keywords = {
-            'cash': ['cash', 'tunai'],
-            'bank': ['bank', 'rekening'],
-            'dana': ['dana'],
-            'gopay': ['gopay'],
-            'ovo': ['ovo']
-        }
+        # First check for specific bank names
+        specific_banks = ['bca', 'bri', 'bni', 'mandiri', 'btn', 'cimb', 'danamon', 'mega', 'permata', 'panin', 'bukopin', 'maybank']
+        for bank in specific_banks:
+            if bank in input_lower:
+                result['akun'] = bank  # Use the specific bank name
+                logger.info(f"Fallback: Detected specific bank '{bank}' from input")
+                break
+        else:
+            # If no specific bank found, check other account types
+            account_keywords = {
+                'cash': ['cash', 'tunai'],
+                'bank': ['bank', 'rekening'],  # Generic bank
+                'dana': ['dana'],
+                'gopay': ['gopay'],
+                'ovo': ['ovo'],
+                'kartu kredit': ['kartu kredit', 'credit card', 'cc', 'visa', 'mastercard']
+            }
+
+            for account, keywords in account_keywords.items():
+                if any(keyword in input_lower for keyword in keywords):
+                    result['akun'] = account
+                    logger.info(f"Fallback: Detected account '{account}' from keywords: {[kw for kw in keywords if kw in input_lower]}")
+                    break
 
         for account, keywords in account_keywords.items():
             if any(keyword in input_lower for keyword in keywords):

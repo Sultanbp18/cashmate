@@ -108,18 +108,13 @@ class DatabaseManager:
     
     def test_connection(self) -> bool:
         """
-        Test database connection and schema access.
+        Test database connection.
         """
         try:
             with self.get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("SELECT 1")
-                    cursor.execute("SELECT EXISTS(SELECT 1 FROM information_schema.schemata WHERE schema_name = 'cashmate')")
-                    schema_exists = cursor.fetchone()[0]
-                    if not schema_exists:
-                        logger.warning("Schema 'cashmate' does not exist")
-                        return False
-            logger.info("Database connection and schema test successful")
+            logger.info("Database connection test successful")
             return True
         except Exception as e:
             logger.error(f"Database connection test failed: {e}")

@@ -40,15 +40,18 @@ POSTGRES_USER=username
 POSTGRES_PASSWORD=password
 ```
 
-### 3. Initialize Database
+### 3. Test Database Connection
 ```bash
-# Connect to your database and run:
-psql "your_connection_string" -f init.sql
+# Test database connection and schema creation
+python test_db.py
 ```
 
 ### 4. Run CashMate
 ```bash
-# Interactive mode
+# Telegram Bot (Recommended)
+python telegram_bot.py
+
+# CLI mode
 python main.py
 
 # Docker
@@ -95,12 +98,16 @@ CashMate> /summary
 
 ## 🗄️ Database Setup Guide
 
-### Current Implementation: Schema Approach
+### Current Implementation: Multi-User Schema Approach
 - **Database**: Any name (defaultdb, postgres, cashmate)
-- **Schema**: `cashmate` (created by init.sql)  
-- **Tables**: `cashmate.akun`, `cashmate.transaksi`
+- **Schema**: `user_{telegram_user_id}` (auto-created per user)
+- **Tables**: `user_123.akun`, `user_123.transaksi`
 
-This provides maximum flexibility for external database providers.
+**Benefits:**
+- ✅ **User Isolation**: Each Telegram user has their own schema
+- ✅ **Auto Setup**: Schemas created automatically on first use
+- ✅ **No Manual Setup**: Just provide database connection
+- ✅ **Flexible**: Works with any PostgreSQL provider
 
 ### Setup Options
 
@@ -238,14 +245,14 @@ The Gemini AI understands Indonesian natural language:
 
 ### Connection Issues
 ```bash
-# Test database
-python -c "from db import get_db; print('✅ OK' if get_db().test_connection() else '❌ Failed')"
+# Test database connection and schema creation
+python test_db.py
 
-# Test AI parser  
+# Test AI parser
 python main.py "5"
 
-# Check schema
-psql "connection_string" -c "\dt cashmate.*"
+# Check user schemas (replace USER_ID with actual Telegram user ID)
+psql "connection_string" -c "\dt user_123.*"
 ```
 
 ### Common Fixes
