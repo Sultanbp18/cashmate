@@ -40,22 +40,14 @@ POSTGRES_USER=username
 POSTGRES_PASSWORD=password
 ```
 
-### 3. Test Database Connection
-```bash
-# Test database connection and schema creation
-python test_db.py
-```
-
-### 4. Run CashMate
+### 3. Run CashMate
 ```bash
 # Telegram Bot (Recommended)
 python telegram_bot.py
 
-# CLI mode
-python main.py
-
-# Docker
-docker-compose up -d
+# Docker (Simple)
+docker build -t cashmate .
+docker run --env-file .env cashmate
 ```
 
 ## 📖 Usage Examples
@@ -68,6 +60,12 @@ Bot: Welcome! Send transactions like: bakso 15k cash
 User: bakso 15k pake cash
 Bot: ✅ Expense recorded: Rp 15,000, Cash, Food
 
+User: transfer bca ke dana 50k
+Bot: 🔄 Transfer successful: Rp 50,000 from bca to dana
+
+User: tarik tunai dari bca 5jt
+Bot: 🔄 Transfer successful: Rp 5,000,000 from bca to cash
+
 User: /summary
 Bot: 📊 Monthly Summary: Income +Rp 0, Expenses -Rp 15,000
 
@@ -75,14 +73,8 @@ User: /recent
 Bot: 📄 Recent transactions with details
 ```
 
-### 💻 CLI Interface
-```bash
-CashMate> /input bakso 15k pake cash
-→ Expense: Rp 15,000, Cash, Food
-
-CashMate> /summary
-→ Monthly report with categories
-```
+### 💻 CLI Interface (Removed)
+The CLI interface has been removed to focus on the Telegram bot. Use the Telegram bot for all interactions.
 
 ### 🚀 Quick Commands (Both Interfaces)
 ```bash
@@ -92,11 +84,19 @@ CashMate> /summary
 /recent              # Recent transactions
 /help               # Show menu
 /start              # Bot welcome (Telegram only)
-/balance            # Show account balances
+/accounts           # Show account balances
 /test               # Test connections
 ```
 
-## 🗄️ Database Setup Guide
+### 🔄 Transfer Commands
+```bash
+# Natural language transfers
+"transfer bca ke dana 50k"     # Transfer between accounts
+"tarik tunai dari bca 5jt"     # Withdraw to cash
+"pindah dari mandiri ke bca 2jt"  # Transfer between banks
+```
+
+## ️ Database Setup Guide
 
 ### Current Implementation: Multi-User Schema Approach
 - **Database**: Any name (defaultdb, postgres, cashmate)
@@ -170,41 +170,26 @@ python main.py "/input test 1000 cash"
 
 ## 🐳 Docker Deployment
 
-### Local Development
+### Simple Docker Setup
 ```bash
-# CLI + PostgreSQL + Adminer
-docker-compose --profile local up -d
-
-# Telegram Bot + PostgreSQL + Adminer
-docker-compose --profile telegram up -d
-```
-
-### External Database
-```bash
-# CLI with external database
-docker-compose --profile external up -d
-
-# Telegram Bot with external database
-docker-compose --profile telegram-external up -d
-```
-
-### Production
-```bash
-# Build image
+# Build the image
 docker build -t cashmate .
 
-# Run CLI mode
-docker run -it --env-file .env cashmate python main.py
-
-# Run Telegram Bot mode
-docker run -d --env-file .env cashmate python telegram_bot.py
+# Run the Telegram bot
+docker run --env-file .env cashmate
 ```
 
-### Docker Profiles
-- `local`: CLI + Local PostgreSQL
-- `telegram`: Telegram Bot + Local PostgreSQL
-- `external`: CLI + External Database
-- `telegram-external`: Telegram Bot + External Database
+### Production Deployment
+```bash
+# Build optimized image
+docker build --no-cache -t cashmate .
+
+# Run in background
+docker run -d --name cashmate-bot --env-file .env --restart unless-stopped cashmate
+
+# View logs
+docker logs -f cashmate-bot
+```
 
 ## 🤖 AI Transaction Examples
 
@@ -214,8 +199,10 @@ The Gemini AI understands Indonesian natural language:
 |-------|---------------|
 | `bakso 15k pake cash` | Expense: Rp 15,000, Cash, Food |
 | `gojek ke kantor 20rb` | Expense: Rp 20,000, Cash, Transport |
-| `gaji bulan ini 5jt ke bank` | Income: Rp 5,000,000, Bank, Salary |
+| `gaji bulan ini 5jt ke bca` | Income: Rp 5,000,000, BCA, Salary |
 | `beli buku 50rb dana` | Expense: Rp 50,000, Dana, Shopping |
+| `transfer bca ke dana 50k` | Transfer: Rp 50,000, BCA → Dana |
+| `tarik tunai dari bca 5jt` | Transfer: Rp 5,000,000, BCA → Cash |
 
 **Amount Formats:**
 - `15k` → Rp 15,000
@@ -245,34 +232,36 @@ The Gemini AI understands Indonesian natural language:
 
 ### Connection Issues
 ```bash
-# Test database connection and schema creation
-python test_db.py
+# Test database connection
+python -c "from db import get_db; db = get_db(); db.test_connection(); print('Database OK')"
 
 # Test AI parser
-python main.py "5"
+python -c "from ai_parser import get_parser; p = get_parser(); print('AI Parser OK')"
 
 # Check user schemas (replace USER_ID with actual Telegram user ID)
 psql "connection_string" -c "\dt user_123.*"
 ```
 
 ### Common Fixes
-- **Database connection failed**: Check credentials in `.env`
-- **Schema not found**: Run `init.sql` on your database
+- **Database connection failed**: Check `DATABASE_URL` in `.env`
+- **Schema not found**: Schemas are created automatically on first use
 - **AI parser errors**: Verify `GEMINI_API_KEY` and internet connection
-- **Permission denied**: Grant schema permissions to user
+- **Permission denied**: Grant schema permissions to database user
+- **AI Model Overload (503)**: Gemini AI is temporarily busy, system will use fallback parser
+- **Transfer parsing errors**: Use simple formats like `transfer bca ke dana 50k`
+- **Account not found**: Accounts are created automatically on first use
 
 ## 📁 Project Structure
 
 ```
 cashmate/
-├── main.py              # CLI application entry point
-├── db.py                # Database operations (schema: cashmate)
-├── ai_parser.py         # Gemini AI transaction parsing  
-├── init.sql             # Database schema initialization
+├── telegram_bot.py      # Main Telegram bot entry point
+├── db.py                # Database operations (multi-user schemas)
+├── ai_parser.py         # Gemini AI transaction parsing
+├── utils.py             # Utility functions and formatting
 ├── requirements.txt     # Python dependencies
 ├── .env.example         # Configuration template
 ├── Dockerfile           # Container configuration
-├── docker-compose.yml   # Docker setup with profiles
 └── README.md           # This documentation
 ```
 
@@ -280,8 +269,8 @@ cashmate/
 
 ### Adding Features
 1. **New categories**: Modify AI prompt in `ai_parser.py`
-2. **Database changes**: Update `init.sql` and `db.py`  
-3. **New commands**: Extend `handle_command()` in `main.py`
+2. **Database changes**: Update schema creation in `telegram_bot.py`
+3. **New commands**: Extend handlers in `telegram_bot.py`
 
 ### API Usage
 ```python
@@ -292,12 +281,12 @@ from ai_parser import get_parser
 parser = get_parser()
 data = parser.parse_transaction("bakso 15k cash")
 
-# Save to database  
+# Save to database
 db = get_db()
-transaction_id = db.insert_transaksi(data)
+# Note: Database operations are schema-specific in telegram_bot.py
 
-# Get summary
-summary = db.get_monthly_summary(2024, 1)
+# Get summary (from telegram_bot.py)
+# summary = self._get_user_monthly_summary(schema_name, year, month)
 ```
 
 ## 📊 Performance & Security

@@ -200,7 +200,8 @@ class DatabaseManager:
                             transaksi_data['catatan']
                         )
                     )
-                    transaksi_id = cursor.fetchone()[0]
+                    transaksi_id_result = cursor.fetchone()
+                    transaksi_id = transaksi_id_result[0] if transaksi_id_result else None
                     
                     # Update account balance
                     balance_change = transaksi_data['nominal']

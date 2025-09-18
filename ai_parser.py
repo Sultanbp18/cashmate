@@ -89,7 +89,11 @@ Example: "bakso 15k" → {{"tipe": "pengeluaran", "nominal": 15000, "akun": "cas
                 return self._parse_with_ai(cleaned_input)
             except Exception as ai_error:
                 logger.warning(f"AI parsing failed: {ai_error}, trying fallback parser")
-                return self._parse_with_fallback(cleaned_input)
+                try:
+                    return self._parse_with_fallback(cleaned_input)
+                except Exception as fallback_error:
+                    logger.error(f"Both AI and fallback parsing failed. AI: {ai_error}, Fallback: {fallback_error}")
+                    raise ValueError(f"Unable to parse transaction. Please try a simpler format like 'bakso 15k cash'")
 
         except Exception as e:
             logger.error(f"Transaction parsing error: {e}")
@@ -123,8 +127,14 @@ Example: "bakso 15k" → {{"tipe": "pengeluaran", "nominal": 15000, "akun": "cas
         # Parse JSON
         parsed_data = json.loads(json_text)
 
-        # Validate required fields
-        required_fields = ['tipe', 'nominal', 'akun', 'kategori', 'catatan']
+        # Validate required fields based on transaction type
+        tipe = parsed_data.get('tipe', '').lower()
+
+        if tipe == 'transfer':
+            required_fields = ['tipe', 'nominal', 'akun_asal', 'akun_tujuan', 'catatan']
+        else:
+            required_fields = ['tipe', 'nominal', 'akun', 'kategori', 'catatan']
+
         for field in required_fields:
             if field not in parsed_data:
                 raise ValueError(f"Missing required field: {field}")
@@ -150,6 +160,46 @@ Example: "bakso 15k" → {{"tipe": "pengeluaran", "nominal": 15000, "akun": "cas
             'kategori': 'lainnya',
             'catatan': user_input
         }
+
+        # Detect transfer keywords first
+        transfer_keywords = ['transfer', 'pindah', 'tarik tunai', 'tarik', 'ambil', 'kirim', 'dari', 'ke']
+        if any(keyword in input_lower for keyword in transfer_keywords):
+            result['tipe'] = 'transfer'
+            result['kategori'] = 'transfer'
+            logger.info(f"Fallback: Detected transfer from keywords: {[kw for kw in transfer_keywords if kw in input_lower]}")
+
+            # Try to extract source and destination accounts for transfers
+            words = input_lower.split()
+            # Look for patterns like "dari X ke Y" or "X ke Y"
+            dari_index = -1
+            ke_index = -1
+
+            for i, word in enumerate(words):
+                if word == 'dari':
+                    dari_index = i
+                elif word == 'ke':
+                    ke_index = i
+
+            # Initialize with defaults
+            source_account = 'cash'
+            dest_account = 'cash'
+
+            if dari_index != -1 and ke_index != -1 and ke_index > dari_index:
+                # Pattern: "dari source ke destination"
+                if dari_index + 1 < len(words):
+                    source_account = self._detect_account_from_word(words[dari_index + 1])
+                if ke_index + 1 < len(words):
+                    dest_account = self._detect_account_from_word(words[ke_index + 1])
+            elif ke_index != -1:
+                # Pattern: "source ke destination"
+                if ke_index > 0:
+                    source_account = self._detect_account_from_word(words[ke_index - 1])
+                if ke_index + 1 < len(words):
+                    dest_account = self._detect_account_from_word(words[ke_index + 1])
+
+            result['akun_asal'] = source_account
+            result['akun_tujuan'] = dest_account
+            logger.info(f"Fallback: Transfer detected - from '{source_account}' to '{dest_account}'")
 
         # Detect income keywords
         income_keywords = ['gaji', 'salary', 'bonus', 'terima', 'dapat', 'penghasilan', 'pendapatan', 'insentif']
@@ -182,36 +232,36 @@ Example: "bakso 15k" → {{"tipe": "pengeluaran", "nominal": 15000, "akun": "cas
                 result['nominal'] = amount
                 break
 
-        # Detect account (don't overwrite 'tipe' field!)
-        # First check for specific bank names
-        specific_banks = ['bca', 'bri', 'bni', 'mandiri', 'btn', 'cimb', 'danamon', 'mega', 'permata', 'panin', 'bukopin', 'maybank']
-        for bank in specific_banks:
-            if bank in input_lower:
-                result['akun'] = bank  # Use the specific bank name
-                logger.info(f"Fallback: Detected specific bank '{bank}' from input")
-                break
+        # Detect account based on transaction type
+        if result['tipe'] == 'transfer':
+            # For transfers, we already set akun_asal and akun_tujuan above
+            # But we might need to improve the account detection for transfers
+            pass
         else:
-            # If no specific bank found, check other account types
-            account_keywords = {
-                'cash': ['cash', 'tunai'],
-                'bank': ['bank', 'rekening'],  # Generic bank
-                'dana': ['dana'],
-                'gopay': ['gopay'],
-                'ovo': ['ovo'],
-                'kartu kredit': ['kartu kredit', 'credit card', 'cc', 'visa', 'mastercard']
-            }
-
-            for account, keywords in account_keywords.items():
-                if any(keyword in input_lower for keyword in keywords):
-                    result['akun'] = account
-                    logger.info(f"Fallback: Detected account '{account}' from keywords: {[kw for kw in keywords if kw in input_lower]}")
+            # For regular transactions, detect single account
+            # First check for specific bank names
+            specific_banks = ['bca', 'bri', 'bni', 'mandiri', 'btn', 'cimb', 'danamon', 'mega', 'permata', 'panin', 'bukopin', 'maybank']
+            for bank in specific_banks:
+                if bank in input_lower:
+                    result['akun'] = bank  # Use the specific bank name
+                    logger.info(f"Fallback: Detected specific bank '{bank}' from input")
                     break
+            else:
+                # If no specific bank found, check other account types
+                account_keywords = {
+                    'cash': ['cash', 'tunai'],
+                    'bank': ['bank', 'rekening'],  # Generic bank
+                    'dana': ['dana'],
+                    'gopay': ['gopay'],
+                    'ovo': ['ovo'],
+                    'kartu kredit': ['kartu kredit', 'credit card', 'cc', 'visa', 'mastercard']
+                }
 
-        for account, keywords in account_keywords.items():
-            if any(keyword in input_lower for keyword in keywords):
-                result['akun'] = account  # Set 'akun', not 'tipe'!
-                logger.info(f"Fallback: Detected account '{account}' from keywords: {[kw for kw in keywords if kw in input_lower]}")
-                break
+                for account, keywords in account_keywords.items():
+                    if any(keyword in input_lower for keyword in keywords):
+                        result['akun'] = account
+                        logger.info(f"Fallback: Detected account '{account}' from keywords: {[kw for kw in keywords if kw in input_lower]}")
+                        break
 
         # Validate result
         if result['nominal'] <= 0:
@@ -223,21 +273,21 @@ Example: "bakso 15k" → {{"tipe": "pengeluaran", "nominal": 15000, "akun": "cas
     def _validate_transaction_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Validate and clean transaction data.
-        
+
         Args:
             data (dict): Raw parsed data
-        
+
         Returns:
             dict: Validated and cleaned data
         """
         validated = {}
-        
+
         # Validate tipe
         tipe = str(data.get('tipe', '')).lower()
-        if tipe not in ['pemasukan', 'pengeluaran']:
+        if tipe not in ['pemasukan', 'pengeluaran', 'transfer']:
             tipe = 'pengeluaran'  # Default to expense
         validated['tipe'] = tipe
-        
+
         # Validate nominal
         try:
             nominal = float(data.get('nominal', 0))
@@ -246,27 +296,70 @@ Example: "bakso 15k" → {{"tipe": "pengeluaran", "nominal": 15000, "akun": "cas
             validated['nominal'] = nominal
         except (ValueError, TypeError):
             raise ValueError("Invalid nominal amount")
-        
-        # Validate akun
-        akun = str(data.get('akun', 'cash')).strip()
-        if not akun:
-            akun = 'cash'
-        validated['akun'] = akun
-        
-        # Validate kategori
-        kategori = str(data.get('kategori', 'lainnya')).strip()
-        if not kategori:
-            kategori = 'lainnya'
-        validated['kategori'] = kategori
-        
+
+        # Handle transfer vs regular transactions
+        if tipe == 'transfer':
+            # Validate source account
+            akun_asal = str(data.get('akun_asal', 'cash')).strip()
+            if not akun_asal:
+                akun_asal = 'cash'
+            validated['akun_asal'] = akun_asal
+
+            # Validate destination account
+            akun_tujuan = str(data.get('akun_tujuan', 'cash')).strip()
+            if not akun_tujuan:
+                akun_tujuan = 'cash'
+            validated['akun_tujuan'] = akun_tujuan
+
+            # For transfers, we don't need kategori
+            validated['kategori'] = 'transfer'
+        else:
+            # Regular transaction validation
+            # Validate akun
+            akun = str(data.get('akun', 'cash')).strip()
+            if not akun:
+                akun = 'cash'
+            validated['akun'] = akun
+
+            # Validate kategori
+            kategori = str(data.get('kategori', 'lainnya')).strip()
+            if not kategori:
+                kategori = 'lainnya'
+            validated['kategori'] = kategori
+
         # Validate catatan
         catatan = str(data.get('catatan', '')).strip()
         if not catatan:
             catatan = 'Transaksi'
         validated['catatan'] = catatan
-        
+
         return validated
-    
+
+    def _detect_account_from_word(self, word: str) -> str:
+        """Detect account type from a single word."""
+        word_lower = word.lower()
+
+        # Specific bank detection
+        specific_banks = ['bca', 'bri', 'bni', 'mandiri', 'btn', 'cimb', 'danamon', 'mega', 'permata', 'panin', 'bukopin', 'maybank']
+        if word_lower in specific_banks:
+            return word_lower
+
+        # Other account types
+        account_mapping = {
+            'cash': ['cash', 'tunai', 'uang'],
+            'dana': ['dana'],
+            'gopay': ['gopay'],
+            'ovo': ['ovo'],
+            'bank': ['bank', 'rekening']
+        }
+
+        for account, keywords in account_mapping.items():
+            if word_lower in keywords:
+                return account
+
+        # Default to the word itself (might be a custom account name)
+        return word_lower
+
     def parse_multiple_transactions(self, user_inputs: list) -> list:
         """
         Parse multiple transaction inputs.

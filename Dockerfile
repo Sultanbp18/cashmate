@@ -1,3 +1,4 @@
+# CashMate Telegram Bot - Docker Image
 FROM python:3.11-slim
 
 # Set working directory
@@ -8,13 +9,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     DEBIAN_FRONTEND=noninteractive
 
-# Install system dependencies
+# Install system dependencies for PostgreSQL
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         gcc \
         python3-dev \
         libpq-dev \
-        curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
@@ -25,17 +25,14 @@ RUN pip install --no-cache-dir --upgrade pip \
 # Copy application code
 COPY . .
 
-# Ensure config directory is included
-COPY config/ ./config/
-
-# Create a non-root user
+# Create a non-root user for security
 RUN groupadd -r cashmate && useradd -r -g cashmate cashmate \
     && chown -R cashmate:cashmate /app
 USER cashmate
 
-# Health check
+# Health check for database connectivity
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "from db import get_db; get_db().test_connection()" || exit 1
+    CMD python -c "from db import get_db; db = get_db(); db.test_connection(); print('Database OK')" || exit 1
 
-# Default command
-CMD ["python", "main.py"]
+# Set entrypoint to telegram_bot.py
+ENTRYPOINT ["python", "telegram_bot.py"]
