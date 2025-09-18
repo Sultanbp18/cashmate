@@ -597,7 +597,7 @@ Error: {str(e)}
                     # Set search path to user schema
                     cursor.execute(f"SET search_path TO {schema_name}")
 
-                    # Get summary by category
+                    # Get summary by category (excluding transfers)
                     cursor.execute(f"""
                         SELECT
                             t.tipe,
@@ -607,17 +607,18 @@ Error: {str(e)}
                         FROM {schema_name}.transaksi t
                         WHERE EXTRACT(YEAR FROM t.waktu) = %s
                           AND EXTRACT(MONTH FROM t.waktu) = %s
+                          AND t.kategori != 'transfer'
                         GROUP BY t.tipe, t.kategori
                         ORDER BY t.tipe, total DESC
                     """, (year, month))
                     category_summary = cursor.fetchall()
 
-                    # Get totals
+                    # Get totals (excluding transfers)
                     cursor.execute(f"""
                         SELECT
-                            SUM(CASE WHEN tipe = 'pemasukan' THEN nominal ELSE 0 END) as total_pemasukan,
-                            SUM(CASE WHEN tipe = 'pengeluaran' THEN nominal ELSE 0 END) as total_pengeluaran,
-                            COUNT(*) as total_transaksi
+                            SUM(CASE WHEN tipe = 'pemasukan' AND kategori != 'transfer' THEN nominal ELSE 0 END) as total_pemasukan,
+                            SUM(CASE WHEN tipe = 'pengeluaran' AND kategori != 'transfer' THEN nominal ELSE 0 END) as total_pengeluaran,
+                            COUNT(CASE WHEN kategori != 'transfer' THEN 1 END) as total_transaksi
                         FROM {schema_name}.transaksi
                         WHERE EXTRACT(YEAR FROM waktu) = %s
                           AND EXTRACT(MONTH FROM waktu) = %s

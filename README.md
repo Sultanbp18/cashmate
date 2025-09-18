@@ -69,6 +69,8 @@ Bot: 🔄 Transfer successful: Rp 5,000,000 from bca to cash
 User: /summary
 Bot: 📊 Monthly Summary: Income +Rp 0, Expenses -Rp 15,000
 
+*Note: Transfer transactions are excluded from income/expense totals and only affect account balances.*
+
 User: /recent
 Bot: 📄 Recent transactions with details
 ```
