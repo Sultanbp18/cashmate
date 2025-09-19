@@ -948,8 +948,25 @@ Error: {str(e)}
             await stop_signal.wait()
 
         except Exception as e:
-            logger.error(f"Bot startup error: {e}")
-            raise
+            error_message = str(e)
+            if "Conflict: terminated by other getUpdates request" in error_message:
+                logger.error("❌ MULTIPLE BOT INSTANCES DETECTED!")
+                logger.error("This usually means:")
+                logger.error("1. Another bot instance is already running")
+                logger.error("2. Previous bot instance wasn't properly stopped")
+                logger.error("3. Multiple containers/processes running the same bot")
+                logger.error("")
+                logger.error("SOLUTION:")
+                logger.error("1. Stop all other bot instances first")
+                logger.error("2. Kill any existing Python processes: pkill -f telegram_bot.py")
+                logger.error("3. If using Docker: docker stop <container_id>")
+                logger.error("4. Wait 30 seconds, then restart the bot")
+                logger.error("")
+                logger.error("To check running processes: ps aux | grep telegram_bot")
+                raise ValueError("Multiple bot instances detected. Please stop other instances first.")
+            else:
+                logger.error(f"Bot startup error: {e}")
+                raise
         finally:
             logger.info("Stopping CashMate Telegram Bot...")
             try:

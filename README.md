@@ -258,6 +258,14 @@ psql "connection_string" -c "\dt user_123.*"
 - **AI Model Overload (503)**: Gemini AI is temporarily busy, system will use fallback parser
 - **Transfer parsing errors**: Use simple formats like `transfer bca ke dana 50k`
 - **Account not found**: Accounts are created automatically on first use
+- **Multiple bot instances**: Stop other bot processes before starting new one
+
+### Telegram Bot Issues
+- **Conflict Error**: "terminated by other getUpdates request" means multiple bot instances running
+- **Solution**: Stop all other bot processes first with `pkill -f telegram_bot.py`
+- **Docker**: Use `docker stop <container_id>` if running in container
+- **Process Check**: Run `ps aux | grep telegram_bot` to find running instances
+- **Wait Time**: Wait 30 seconds after stopping before restarting
 
 ## 📁 Project Structure
 
