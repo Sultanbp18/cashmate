@@ -1,6 +1,6 @@
 """
-CashMate AI Parser Module
-Handles transaction parsing using Google's Gemini AI API.
+NLP Processor for transaction parsing using Google's Gemini AI.
+Handles natural language processing for transaction inputs.
 """
 
 import os
@@ -21,27 +21,27 @@ class GeminiTransactionParser:
     """
     Transaction parser using Google's Gemini AI to extract structured data from natural language input.
     """
-    
+
     def __init__(self):
         self.api_key = os.getenv('GEMINI_API_KEY')
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY not found in environment variables")
-        
+
         # Configure Gemini AI
         genai.configure(api_key=self.api_key)
         # Use the correct model name
         self.model = genai.GenerativeModel('gemini-2.0-flash')
-        
+
         logger.info("Gemini AI parser initialized successfully")
-    
+
     def create_parsing_prompt(self, user_input: str) -> str:
         """
         Create a detailed prompt for Gemini AI to parse transaction data.
         Load prompt template from external file.
-        
+
         Args:
             user_input (str): Raw user input
-        
+
         Returns:
             str: Formatted prompt for AI
         """
@@ -53,7 +53,7 @@ class GeminiTransactionParser:
         except FileNotFoundError:
             logger.warning("Prompt file not found, using fallback prompt")
             return self._fallback_prompt(user_input)
-    
+
     def _fallback_prompt(self, user_input: str) -> str:
         """Fallback prompt if external file is not available."""
         return f'''
@@ -103,7 +103,7 @@ Examples:
 "Topup gopay 30k" → {{"tipe": "transfer", "nominal": 30000, "akun_asal": "cash", "akun_tujuan": "gopay", "catatan": "Topup gopay"}}
 "Isi saldo dana 50k" → {{"tipe": "transfer", "nominal": 50000, "akun_asal": "cash", "akun_tujuan": "dana", "catatan": "Isi saldo dana"}}
 '''
-    
+
     def parse_transaction(self, user_input: str) -> Dict[str, Any]:
         """
         Parse natural language transaction input using Gemini AI with fallback.
@@ -408,7 +408,7 @@ Examples:
 
         logger.info(f"Fallback parser result: {result}")
         return self._validate_transaction_data(result)
-    
+
     def _validate_transaction_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Validate and clean transaction data.
@@ -581,10 +581,10 @@ Examples:
     def parse_multiple_transactions(self, user_inputs: list) -> list:
         """
         Parse multiple transaction inputs.
-        
+
         Args:
             user_inputs (list): List of transaction input strings
-        
+
         Returns:
             list: List of parsed transaction dictionaries
         """
@@ -600,11 +600,11 @@ Examples:
                     'input': input_text
                 })
         return results
-    
+
     def test_parser(self) -> bool:
         """
         Test the parser with sample inputs.
-        
+
         Returns:
             bool: True if test passes
         """
@@ -615,15 +615,15 @@ Examples:
             "beli buku 50rb pake dana",
             "makan siang 25k"
         ]
-        
+
         try:
             for test_input in test_cases:
                 result = self.parse_transaction(test_input)
                 logger.info(f"Test '{test_input}' -> {result}")
-            
+
             logger.info("Parser test completed successfully")
             return True
-            
+
         except Exception as e:
             logger.error(f"Parser test failed: {e}")
             return False
@@ -634,10 +634,10 @@ transaction_parser = GeminiTransactionParser()
 def parse_transaction_input(user_input: str) -> Dict[str, Any]:
     """
     Parse transaction input using the global parser instance.
-    
+
     Args:
         user_input (str): Natural language transaction description
-    
+
     Returns:
         dict: Structured transaction data
     """
@@ -646,7 +646,7 @@ def parse_transaction_input(user_input: str) -> Dict[str, Any]:
 def get_parser():
     """
     Get the global transaction parser instance.
-    
+
     Returns:
         GeminiTransactionParser: Parser instance
     """

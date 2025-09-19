@@ -10,15 +10,17 @@
 - 💳 **Multi-Account Support** - Cash, bank, e-wallets (Dana, GoPay, OVO)
 - 📈 **Monthly Reports** - Detailed summaries by category
 - 🚫 **Balance Protection** - Prevents negative balances with clear error messages
-- 🚀 **CLI Interface** - Interactive menu + quick commands
+- 🏗️ **Modular Architecture** - Clean, scalable codebase structure
 - 🐳 **Docker Ready** - Easy deployment
+- 📚 **Well Documented** - Comprehensive API and usage documentation
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Python 3.11+ 
+- Python 3.11+
 - PostgreSQL database (local/external)
 - Google Gemini AI API key
+- Telegram Bot Token
 
 ### 1. Setup
 ```bash
@@ -30,23 +32,30 @@ cp .env.example .env
 
 ### 2. Configure Environment
 ```env
-# Simple setup with DATABASE_URL
+# Database Configuration
 DATABASE_URL=postgresql://user:pass@host:port/database
-GEMINI_API_KEY=your_gemini_api_key
-
-# Or individual variables
+# OR
 POSTGRES_HOST=localhost
-POSTGRES_DB=defaultdb  
+POSTGRES_DB=cashmate
 POSTGRES_USER=username
 POSTGRES_PASSWORD=password
+
+# AI Configuration
+GEMINI_API_KEY=your_gemini_api_key
+
+# Telegram Bot Configuration
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 ```
 
 ### 3. Run CashMate
 ```bash
-# Telegram Bot (Recommended)
-python telegram_bot.py
+# Using the new modular structure
+python main.py
 
-# Docker (Simple)
+# Or directly
+python -m src.bot.main
+
+# Docker deployment
 docker build -t cashmate .
 docker run --env-file .env cashmate
 ```
@@ -273,38 +282,117 @@ psql "connection_string" -c "\dt user_123.*"
 
 ```
 cashmate/
-├── telegram_bot.py      # Main Telegram bot entry point
-├── db.py                # Database operations (multi-user schemas)
-├── ai_parser.py         # Gemini AI transaction parsing
-├── utils.py             # Utility functions and formatting
-├── requirements.txt     # Python dependencies
-├── .env.example         # Configuration template
-├── Dockerfile           # Container configuration
-└── README.md           # This documentation
+├── src/                    # Source code
+│   ├── __init__.py
+│   ├── config.py          # Configuration management
+│   ├── bot/               # Telegram bot package
+│   │   ├── __init__.py
+│   │   ├── main.py        # Bot entry point
+│   │   ├── handlers/      # Command handlers
+│   │   │   ├── __init__.py
+│   │   │   ├── start.py   # /start command
+│   │   │   ├── expense.py # Transaction handling
+│   │   │   ├── report.py  # Report commands
+│   │   │   └── settings.py # Settings & help
+│   │   └── keyboards.py   # Bot keyboards/menus
+│   ├── core/              # Core functionality
+│   │   ├── __init__.py
+│   │   ├── database.py    # Database operations
+│   │   └── models.py      # Data models & schemas
+│   ├── services/          # Business logic services
+│   │   ├── __init__.py
+│   │   ├── nlp_processor.py   # AI transaction parsing
+│   │   ├── expense_manager.py # Expense operations
+│   │   └── report_generator.py # Report generation
+│   └── utils/             # Utility functions
+│       ├── __init__.py
+│       ├── helpers.py     # Helper functions
+│       ├── formatters.py  # Formatting utilities
+│       └── validators.py  # Validation functions
+├── tests/                 # Test suite
+│   ├── __init__.py
+│   ├── conftest.py        # Test configuration
+│   └── test_utils.py      # Utility tests
+├── docs/                  # Documentation
+│   ├── API.md            # API documentation
+│   ├── SETUP.md          # Setup guide
+│   └── USAGE.md          # Usage guide
+├── scripts/               # Utility scripts
+│   ├── deploy.sh         # Deployment script
+│   └── init_db.py        # Database initialization
+├── main.py               # Application entry point
+├── pyproject.toml        # Python project configuration
+├── requirements.txt      # Production dependencies
+├── requirements-dev.txt  # Development dependencies
+├── .env.example          # Environment template
+├── Dockerfile            # Container configuration
+└── README.md            # This documentation
 ```
 
 ## 🛠️ Development
 
+### Project Structure Overview
+
+The codebase is organized into modular packages:
+
+- **`src.bot`**: Telegram bot implementation with command handlers
+- **`src.core`**: Database operations and data models
+- **`src.services`**: Business logic (AI parsing, expense management, reporting)
+- **`src.utils`**: Utility functions and helpers
+- **`tests`**: Test suite with fixtures and test cases
+
 ### Adding Features
-1. **New categories**: Modify AI prompt in `ai_parser.py`
-2. **Database changes**: Update schema creation in `telegram_bot.py`
-3. **New commands**: Extend handlers in `telegram_bot.py`
+
+1. **New Bot Commands**: Add handlers in `src/bot/handlers/`
+2. **Database Changes**: Update models in `src/core/models.py` and operations in `src/core/database.py`
+3. **Business Logic**: Extend services in `src/services/`
+4. **AI Categories**: Modify prompts in `src/services/nlp_processor.py`
 
 ### API Usage
+
 ```python
-from db import get_db
-from ai_parser import get_parser
+# Import from modular structure
+from src.core.database import get_db
+from src.services.nlp_processor import get_parser
+from src.services.expense_manager import ExpenseManager
+from src.services.report_generator import ReportGenerator
 
 # Parse transaction
 parser = get_parser()
 data = parser.parse_transaction("bakso 15k cash")
 
-# Save to database
-db = get_db()
-# Note: Database operations are schema-specific in telegram_bot.py
+# Process transaction for user
+expense_mgr = ExpenseManager()
+result = expense_mgr.process_transaction(user_id=123, transaction_data=data)
 
-# Get summary (from telegram_bot.py)
-# summary = self._get_user_monthly_summary(schema_name, year, month)
+# Generate reports
+report_gen = ReportGenerator()
+monthly_report = report_gen.generate_monthly_report(user_id=123)
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+pytest
+
+# Run specific test file
+pytest tests/test_utils.py
+
+# Run with coverage
+pytest --cov=src --cov-report=html
+```
+
+### Code Quality
+
+```bash
+# Format code
+black src/
+isort src/
+
+# Lint code
+flake8 src/
+mypy src/
 ```
 
 ## 📊 Performance & Security
