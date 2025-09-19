@@ -252,10 +252,10 @@ The Gemini AI understands Indonesian natural language:
 ### Connection Issues
 ```bash
 # Test database connection
-python -c "from db import get_db; db = get_db(); db.test_connection(); print('Database OK')"
+python -c "from src.core.database import get_db; db = get_db(); db.test_connection(); print('Database OK')"
 
 # Test AI parser
-python -c "from ai_parser import get_parser; p = get_parser(); print('AI Parser OK')"
+python -c "from src.services.nlp_processor import get_parser; p = get_parser(); print('AI Parser OK')"
 
 # Check user schemas (replace USER_ID with actual Telegram user ID)
 psql "connection_string" -c "\dt user_123.*"
@@ -273,7 +273,7 @@ psql "connection_string" -c "\dt user_123.*"
 
 ### Telegram Bot Issues
 - **Conflict Error**: "terminated by other getUpdates request" means multiple bot instances running
-- **Solution**: Stop all other bot processes first with `pkill -f telegram_bot.py`
+- **Solution**: Stop all other bot processes first with `pkill -f main.py`
 - **Docker**: Use `docker stop <container_id>` if running in container
 - **Process Check**: Run `ps aux | grep telegram_bot` to find running instances
 - **Wait Time**: Wait 30 seconds after stopping before restarting

@@ -104,11 +104,11 @@ class CashMateTelegramBot:
                 logger.error("")
                 logger.error("SOLUTION:")
                 logger.error("1. Stop all other bot instances first")
-                logger.error("2. Kill any existing Python processes: pkill -f telegram_bot.py")
+                logger.error("2. Kill any existing Python processes: pkill -f main.py")
                 logger.error("3. If using Docker: docker stop <container_id>")
                 logger.error("4. Wait 30 seconds, then restart the bot")
                 logger.error("")
-                logger.error("To check running processes: ps aux | grep telegram_bot")
+                logger.error("To check running processes: ps aux | grep main.py")
                 raise ValueError("Multiple bot instances detected. Please stop other instances first.")
             else:
                 logger.error(f"Bot startup error: {e}")

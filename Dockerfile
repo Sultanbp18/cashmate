@@ -32,7 +32,7 @@ USER cashmate
 
 # Health check for database connectivity
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "from db import get_db; db = get_db(); db.test_connection(); print('Database OK')" || exit 1
+    CMD python -c "from src.core.database import get_db; db = get_db(); db.test_connection(); print('Database OK')" || exit 1
 
-# Set entrypoint to telegram_bot.py
-ENTRYPOINT ["python", "telegram_bot.py"]
+# Set entrypoint to main.py
+ENTRYPOINT ["python", "main.py"]
