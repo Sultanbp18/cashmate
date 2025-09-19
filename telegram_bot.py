@@ -571,6 +571,26 @@ Error: {str(parse_error)}
             # Edit the processing message with success
             await processing_msg.edit_text(success_message, parse_mode='Markdown')
 
+        except ValueError as e:
+            # Handle insufficient balance errors specifically
+            logger.warning(f"Transaction validation error: {e}")
+            error_message = f"""
+❌ *Transaksi Gagal - Saldo Tidak Cukup*
+
+Input: `{transaction_input}`
+Error: {str(e)}
+
+💡 *Solusi:*
+• Cek saldo akun dengan `/accounts`
+• Pastikan saldo mencukupi sebelum transaksi
+• Atau gunakan akun lain yang memiliki saldo cukup
+            """
+
+            if 'processing_msg' in locals():
+                await processing_msg.edit_text(error_message, parse_mode='Markdown')
+            else:
+                await update.message.reply_text(error_message, parse_mode='Markdown')
+
         except Exception as e:
             logger.error(f"Transaction processing error: {e}")
             error_message = f"""
@@ -747,6 +767,18 @@ Error: {str(e)}
         # Default to kas (cash)
         return 'kas'
 
+    def _get_account_balance(self, cursor, schema_name: str, account_id: int) -> float:
+        """Get current balance of an account."""
+        cursor.execute(f"SELECT saldo FROM {schema_name}.akun WHERE id = %s", (account_id,))
+        result = cursor.fetchone()
+        return float(result[0]) if result and result[0] is not None else 0.0
+
+    def _get_account_name(self, cursor, schema_name: str, account_id: int) -> str:
+        """Get account name by ID."""
+        cursor.execute(f"SELECT nama FROM {schema_name}.akun WHERE id = %s", (account_id,))
+        result = cursor.fetchone()
+        return result[0] if result else "Unknown Account"
+
     def _insert_user_transaction(self, schema_name: str, transaksi_data: Dict[str, Any]) -> int:
         """Insert transaction into user schema."""
         try:
@@ -774,6 +806,20 @@ Error: {str(e)}
         """Process regular income/expense transaction."""
         # Get or create account
         akun_id = self._get_or_create_user_account(schema_name, transaksi_data['akun'])
+
+        # Check balance for expenses
+        if transaksi_data['tipe'] == 'pengeluaran':
+            current_balance = self._get_account_balance(cursor, schema_name, akun_id)
+            from decimal import Decimal
+            expense_amount = Decimal(str(transaksi_data['nominal']))
+
+            if current_balance < expense_amount:
+                account_name = self._get_account_name(cursor, schema_name, akun_id)
+                raise ValueError(
+                    f"Saldo tidak cukup di akun {account_name}. "
+                    f"Saldo tersedia: Rp {current_balance:,.0f}, "
+                    f"Dibutuhkan: Rp {expense_amount:,.0f}"
+                )
 
         from decimal import Decimal
         cursor.execute(f"""
@@ -815,7 +861,11 @@ Error: {str(e)}
         transfer_amount = Decimal(str(transaksi_data['nominal']))
 
         if source_balance < transfer_amount:
-            raise ValueError(f"Insufficient balance in {transaksi_data['akun_asal']}. Available: Rp {source_balance:,.0f}, Needed: Rp {transfer_amount:,.0f}")
+            raise ValueError(
+                f"Saldo tidak cukup di akun {transaksi_data['akun_asal']} untuk transfer. "
+                f"Saldo tersedia: Rp {source_balance:,.0f}, "
+                f"Dibutuhkan: Rp {transfer_amount:,.0f}"
+            )
 
         # Insert transfer transactions
         cursor.execute(f"""

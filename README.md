@@ -6,9 +6,10 @@
 
 - 🤖 **AI Transaction Parsing** - Natural language input: `"bakso 15k pake cash"`
 - 💾 **PostgreSQL Integration** - External database support (Aiven, AWS RDS, Heroku)
-- 📊 **Smart Categorization** - Auto-categorize transactions 
+- 📊 **Smart Categorization** - Auto-categorize transactions
 - 💳 **Multi-Account Support** - Cash, bank, e-wallets (Dana, GoPay, OVO)
 - 📈 **Monthly Reports** - Detailed summaries by category
+- 🚫 **Balance Protection** - Prevents negative balances with clear error messages
 - 🚀 **CLI Interface** - Interactive menu + quick commands
 - 🐳 **Docker Ready** - Easy deployment
 
@@ -62,6 +63,10 @@ Bot: ✅ Expense recorded: Rp 15,000, Cash, Food
 
 User: transfer bca ke dana 50k
 Bot: 🔄 Transfer successful: Rp 50,000 from bca to dana
+
+User: beli laptop 20jt cash
+Bot: ❌ Transaksi Gagal - Saldo Tidak Cukup
+      Saldo tersedia: Rp 5,000,000, Dibutuhkan: Rp 20,000,000
 
 User: tarik tunai dari bca 5jt
 Bot: 🔄 Transfer successful: Rp 5,000,000 from bca to cash
@@ -202,6 +207,7 @@ The Gemini AI understands Indonesian natural language:
 | `bakso 15k pake cash` | Expense: Rp 15,000, Cash, Food |
 | `gojek ke kantor 20rb` | Expense: Rp 20,000, Cash, Transport |
 | `gaji bulan ini 5jt ke bca` | Income: Rp 5,000,000, BCA, Salary |
+| `bonus 1jt ke dana` | Income: Rp 1,000,000, Dana, Salary |
 | `beli buku 50rb dana` | Expense: Rp 50,000, Dana, Shopping |
 | `transfer bca ke dana 50k` | Transfer: Rp 50,000, BCA → Dana |
 | `tarik tunai dari bca 5jt` | Transfer: Rp 5,000,000, BCA → Cash |

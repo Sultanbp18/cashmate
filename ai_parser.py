@@ -30,7 +30,7 @@ class GeminiTransactionParser:
         # Configure Gemini AI
         genai.configure(api_key=self.api_key)
         # Use the correct model name
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
+        self.model = genai.GenerativeModel('gemini-2.0-flash')
         
         logger.info("Gemini AI parser initialized successfully")
     
@@ -93,6 +93,7 @@ Examples:
 "Kopi Lawson 20k" → {{"tipe": "pengeluaran", "nominal": 20000, "akun": "cash", "kategori": "makanan", "catatan": "Kopi Lawson"}}
 "Dimsum di familymart 50k" → {{"tipe": "pengeluaran", "nominal": 50000, "akun": "cash", "kategori": "makanan", "catatan": "Dimsum di familymart"}}
 "gaji 5jt ke bca" → {{"tipe": "pemasukan", "nominal": 5000000, "akun": "bca", "kategori": "gaji", "catatan": "gaji"}}
+"bonus 1jt ke dana" → {{"tipe": "pemasukan", "nominal": 1000000, "akun": "dana", "kategori": "gaji", "catatan": "bonus"}}
 "gojek ke kantor 20rb" → {{"tipe": "pengeluaran", "nominal": 20000, "akun": "cash", "kategori": "transportasi", "catatan": "gojek ke kantor"}}
 "bensin 50rb" → {{"tipe": "pengeluaran", "nominal": 50000, "akun": "cash", "kategori": "transportasi", "catatan": "bensin"}}
 "Transfer BNI ke BCA 1jt" → {{"tipe": "transfer", "nominal": 1000000, "akun_asal": "bni", "akun_tujuan": "bca", "catatan": "Transfer BNI ke BCA"}}
