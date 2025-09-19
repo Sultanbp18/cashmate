@@ -207,8 +207,10 @@ The Gemini AI understands Indonesian natural language:
 | `bakso 15k pake cash` | Expense: Rp 15,000, Cash, Food |
 | `gojek ke kantor 20rb` | Expense: Rp 20,000, Cash, Transport |
 | `gaji bulan ini 5jt ke bca` | Income: Rp 5,000,000, BCA, Salary |
-| `bonus 1jt ke dana` | Income: Rp 1,000,000, Dana, Salary |
+| `bonus 1233 ke shopee` | Income: Rp 1,233, ShopeePay, Salary |
 | `beli buku 50rb dana` | Expense: Rp 50,000, Dana, Shopping |
+| `belanja di shopee 50k` | Expense: Rp 50,000, Cash, Shopping |
+| `belanja di shopee 50k pake shopeepay` | Expense: Rp 50,000, ShopeePay, Shopping |
 | `transfer bca ke dana 50k` | Transfer: Rp 50,000, BCA → Dana |
 | `tarik tunai dari bca 5jt` | Transfer: Rp 5,000,000, BCA → Cash |
 

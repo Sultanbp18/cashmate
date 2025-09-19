@@ -755,7 +755,7 @@ Error: {str(e)}
             return 'bank'
 
         # E-wallet detection
-        ewallet_keywords = ['dana', 'gopay', 'ovo', 'linkaja', 'shopeepay']
+        ewallet_keywords = ['dana', 'gopay', 'ovo', 'linkaja', 'shopeepay', 'shopee']
         if any(keyword in name_lower for keyword in ewallet_keywords):
             return 'e-wallet'
 

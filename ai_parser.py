@@ -341,7 +341,8 @@ Examples:
             'beli', 'belanja', 'shop', 'mall', 'supermarket', 'minimarket', 'pasar',
             'toko', 'warung', 'kios', 'baju', 'celana', 'sepatu', 'tas', 'topi',
             'elektronik', 'handphone', 'laptop', 'charger', 'kabel', 'baterai',
-            'kosmetik', 'sabun', 'shampoo', 'sampo', 'cream', 'parfum', 'skincare'
+            'kosmetik', 'sabun', 'shampoo', 'sampo', 'cream', 'parfum', 'skincare',
+            'shopee', 'tokopedia', 'bukalapak', 'lazada', 'blibli', 'jd.id', 'zalora'
         ]
 
         entertainment_keywords = [
@@ -399,29 +400,7 @@ Examples:
             pass
         else:
             # For regular transactions, detect single account
-            # First check for specific bank names
-            specific_banks = ['bca', 'bri', 'bni', 'mandiri', 'btn', 'cimb', 'danamon', 'mega', 'permata', 'panin', 'bukopin', 'maybank']
-            for bank in specific_banks:
-                if bank in input_lower:
-                    result['akun'] = bank  # Use the specific bank name
-                    logger.info(f"Fallback: Detected specific bank '{bank}' from input")
-                    break
-            else:
-                # If no specific bank found, check other account types
-                account_keywords = {
-                    'cash': ['cash', 'tunai'],
-                    'bank': ['bank', 'rekening'],  # Generic bank
-                    'dana': ['dana'],
-                    'gopay': ['gopay'],
-                    'ovo': ['ovo'],
-                    'kartu kredit': ['kartu kredit', 'credit card', 'cc', 'visa', 'mastercard']
-                }
-
-                for account, keywords in account_keywords.items():
-                    if any(keyword in input_lower for keyword in keywords):
-                        result['akun'] = account
-                        logger.info(f"Fallback: Detected account '{account}' from keywords: {[kw for kw in keywords if kw in input_lower]}")
-                        break
+            result['akun'] = self._detect_account_for_transaction(input_lower, result['kategori'])
 
         # Validate result
         if result['nominal'] <= 0:
@@ -522,6 +501,7 @@ Examples:
             'dana': ['dana'],
             'gopay': ['gopay', 'gojek'],
             'ovo': ['ovo'],
+            'shopee': ['shopee', 'shopeepay'],
             'bank': ['bank', 'rekening']
         }
 
@@ -535,6 +515,68 @@ Examples:
 
         # Default to the word itself (might be a custom account name)
         return word_lower
+
+    def _detect_account_for_transaction(self, input_lower: str, category: str) -> str:
+        """Detect the appropriate account for a transaction based on content and category."""
+        # First check for specific bank names
+        specific_banks = ['bca', 'bri', 'bni', 'mandiri', 'btn', 'cimb', 'danamon', 'mega', 'permata', 'panin', 'bukopin', 'maybank']
+        for bank in specific_banks:
+            if bank in input_lower:
+                logger.info(f"Fallback: Detected specific bank '{bank}' from input")
+                return bank
+
+        # Check for shopping platform patterns
+        if category == 'belanja':
+            # Detect shopping platforms and their associated payment methods
+            platform_payment_map = {
+                'shopee': 'shopeepay',
+                'tokopedia': 'cash',  # Tokopedia usually uses cash/bank transfer
+                'bukalapak': 'cash',
+                'lazada': 'cash',
+                'blibli': 'cash',
+                'jd.id': 'cash',
+                'zalora': 'cash'
+            }
+
+            for platform, default_payment in platform_payment_map.items():
+                if platform in input_lower:
+                    # Check if user specified a payment method
+                    payment_keywords = {
+                        'shopeepay': ['shopeepay', 'shopee pay'],
+                        'dana': ['dana'],
+                        'gopay': ['gopay'],
+                        'ovo': ['ovo'],
+                        'cash': ['cash', 'tunai', 'cod']
+                    }
+
+                    for payment_method, keywords in payment_keywords.items():
+                        if any(keyword in input_lower for keyword in keywords):
+                            logger.info(f"Fallback: Detected shopping on {platform} with {payment_method}")
+                            return payment_method
+
+                    # No specific payment method mentioned, use platform default
+                    logger.info(f"Fallback: Detected shopping on {platform}, using default {default_payment}")
+                    return default_payment
+
+        # Check other account types
+        account_keywords = {
+            'cash': ['cash', 'tunai'],
+            'bank': ['bank', 'rekening'],  # Generic bank
+            'dana': ['dana'],
+            'gopay': ['gopay'],
+            'ovo': ['ovo'],
+            'shopee': ['shopee', 'shopeepay'],
+            'kartu kredit': ['kartu kredit', 'credit card', 'cc', 'visa', 'mastercard']
+        }
+
+        for account, keywords in account_keywords.items():
+            if any(keyword in input_lower for keyword in keywords):
+                logger.info(f"Fallback: Detected account '{account}' from keywords: {[kw for kw in keywords if kw in input_lower]}")
+                return account
+
+        # Default to cash if nothing detected
+        logger.info("Fallback: No specific account detected, defaulting to 'cash'")
+        return 'cash'
 
     def parse_multiple_transactions(self, user_inputs: list) -> list:
         """
