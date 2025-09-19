@@ -132,13 +132,7 @@ class ExpenseManager:
             if not self._ensure_user_schema(user_id):
                 return []
 
-            with self.db.get_connection() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute(f"SET search_path TO {schema_name}")
-                    cursor.execute("SELECT nama, tipe, saldo FROM akun ORDER BY tipe, nama")
-                    accounts = cursor.fetchall()
-
-            return [dict(account) for account in accounts]
+            return self.db.get_user_accounts(schema_name)
 
         except Exception as e:
             logger.error(f"Error getting accounts for user {user_id}: {e}")
@@ -165,7 +159,7 @@ class ExpenseManager:
             if not self._ensure_user_schema(user_id):
                 return self._get_empty_summary(year, month)
 
-            return self.db.get_monthly_summary(year, month)
+            return self.db.get_user_monthly_summary(schema_name, year, month)
 
         except Exception as e:
             logger.error(f"Error getting monthly summary for user {user_id}: {e}")
@@ -188,7 +182,7 @@ class ExpenseManager:
             if not self._ensure_user_schema(user_id):
                 return []
 
-            return self.db.get_recent_transactions(limit)
+            return self.db.get_user_recent_transactions(schema_name, limit)
 
         except Exception as e:
             logger.error(f"Error getting recent transactions for user {user_id}: {e}")
@@ -200,45 +194,32 @@ class ExpenseManager:
 
     def _ensure_user_schema(self, user_id: int) -> bool:
         """Ensure user schema exists and is properly set up."""
-        # This would need to be implemented based on the database setup logic
-        # For now, return True assuming schema exists
-        return True
+        return self.db.ensure_user_schema(user_id)
 
-    def _get_or_create_user_account(self, schema_name: str, account_name: str, account_type: str = None) -> int:
+    def _get_or_create_user_account(self, schema_name: str, account_name: str, account_type: str = 'kas') -> int:
         """Get existing account ID or create new account for user."""
-        # This would need to be implemented based on the database operations
-        # For now, return a dummy ID
-        return 1
+        return self.db.get_or_create_user_account(schema_name, account_name, account_type)
 
     def _get_account_balance(self, schema_name: str, account_id: int) -> float:
         """Get current balance of an account."""
-        # This would need to be implemented based on the database operations
-        # For now, return a dummy balance
-        return 1000000.0
+        return self.db.get_account_balance(schema_name, account_id)
 
     def _get_account_name(self, schema_name: str, account_id: int) -> str:
         """Get account name by ID."""
-        # This would need to be implemented based on the database operations
-        # For now, return a dummy name
-        return "cash"
+        return self.db.get_account_name(schema_name, account_id)
 
     def _insert_user_transaction(self, schema_name: str, transaction_data: Dict[str, Any]) -> int:
         """Insert transaction into user schema."""
-        # This would need to be implemented based on the database operations
-        # For now, return a dummy ID
-        return 1
+        return self.db.insert_user_transaction(schema_name, transaction_data)
 
     def _insert_transfer_transactions(self, schema_name: str, transaction_data: Dict[str, Any],
-                                    source_account_id: int, dest_account_id: int) -> int:
+                                     source_account_id: int, dest_account_id: int) -> int:
         """Insert transfer transactions."""
-        # This would need to be implemented based on the database operations
-        # For now, return a dummy ID
-        return 1
+        return self.db.insert_transfer_transactions(schema_name, transaction_data, source_account_id, dest_account_id)
 
     def _update_account_balance(self, schema_name: str, account_id: int, balance_change: float):
         """Update account balance."""
-        # This would need to be implemented based on the database operations
-        pass
+        self.db.update_account_balance(schema_name, account_id, balance_change)
 
     def _get_empty_summary(self, year: int, month: int) -> Dict[str, Any]:
         """Get empty summary structure."""
